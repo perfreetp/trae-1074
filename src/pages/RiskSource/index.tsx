@@ -13,6 +13,7 @@ export default function RiskSource() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [detailEditMode, setDetailEditMode] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedSource, setSelectedSource] = useState<HazardSource | null>(null);
   const [formData, setFormData] = useState({
@@ -62,6 +63,18 @@ export default function RiskSource() {
 
   const handleViewDetail = (source: HazardSource) => {
     setSelectedSource(source);
+    setDetailEditMode(false);
+    setFormData({
+      enterpriseId: source.enterpriseId,
+      name: source.name,
+      type: source.type,
+      level: source.level,
+      location: source.location,
+      status: source.status,
+      controlMeasures: source.controlMeasures,
+      lng: source.lng || 116.4 + (Math.random() - 0.5) * 0.1,
+      lat: source.lat || 39.915 + (Math.random() - 0.5) * 0.1,
+    });
     setDetailModalOpen(true);
   };
 
@@ -126,6 +139,29 @@ export default function RiskSource() {
     setEditModalOpen(false);
     setSelectedSource(null);
     resetForm();
+  };
+
+  const submitDetailEdit = () => {
+    if (!selectedSource || !formData.enterpriseId || !formData.name || !formData.type || !formData.location) return;
+
+    const enterprise = state.enterprises.find((e) => e.id === formData.enterpriseId);
+    const updatedSource: HazardSource = {
+      ...selectedSource,
+      enterpriseId: formData.enterpriseId,
+      enterpriseName: enterprise?.name || selectedSource.enterpriseName,
+      name: formData.name,
+      type: formData.type,
+      level: formData.level,
+      location: formData.location,
+      status: formData.status,
+      controlMeasures: formData.controlMeasures,
+      lng: formData.lng,
+      lat: formData.lat,
+    };
+
+    dispatch({ type: 'UPDATE_HAZARD_SOURCE', payload: updatedSource });
+    setSelectedSource(updatedSource);
+    setDetailEditMode(false);
   };
 
   return (
@@ -392,59 +428,93 @@ export default function RiskSource() {
         onClose={() => {
           setDetailModalOpen(false);
           setSelectedSource(null);
+          setDetailEditMode(false);
         }}
-        title="危险源详情"
+        title={detailEditMode ? "编辑危险源" : "危险源详情"}
         size="lg"
+        footer={
+          detailEditMode ? (
+            <>
+              <button
+                onClick={() => setDetailEditMode(false)}
+                className="btn btn-secondary"
+              >
+                取消
+              </button>
+              <button
+                onClick={submitDetailEdit}
+                disabled={!formData.enterpriseId || !formData.name || !formData.type || !formData.location}
+                className="btn btn-primary"
+              >
+                保存
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setDetailEditMode(true)}
+                className="btn btn-primary flex items-center"
+              >
+                <Edit size={16} className="mr-1" />
+                编辑
+              </button>
+            </>
+          )
+        }
       >
         {selectedSource && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm text-slate-500">危险源名称</p>
-                <p className="text-slate-800 font-medium mt-1">{selectedSource.name}</p>
-              </div>
-              <div>
-                <p className="text-sm text-slate-500">所属企业</p>
-                <p className="text-slate-800 font-medium mt-1">{selectedSource.enterpriseName}</p>
-              </div>
-              <div>
-                <p className="text-sm text-slate-500">类型</p>
-                <p className="text-slate-800 font-medium mt-1">{selectedSource.type}</p>
-              </div>
-              <div>
-                <p className="text-sm text-slate-500">等级</p>
-                <span className={`badge text-white ${getHazardLevelColor(selectedSource.level)} mt-1`}>
-                  {getHazardLevelText(selectedSource.level)}
-                </span>
-              </div>
-              <div>
-                <p className="text-sm text-slate-500">位置</p>
-                <p className="text-slate-800 font-medium mt-1">{selectedSource.location}</p>
-              </div>
-              <div>
-                <p className="text-sm text-slate-500">状态</p>
-                <div className="mt-1">
-                  <StatusBadge status={selectedSource.status} />
+          detailEditMode ? (
+            <HazardSourceForm formData={formData} setFormData={setFormData} enterprises={state.enterprises} />
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-slate-500">危险源名称</p>
+                  <p className="text-slate-800 font-medium mt-1">{selectedSource.name}</p>
                 </div>
+                <div>
+                  <p className="text-sm text-slate-500">所属企业</p>
+                  <p className="text-slate-800 font-medium mt-1">{selectedSource.enterpriseName}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500">类型</p>
+                  <p className="text-slate-800 font-medium mt-1">{selectedSource.type}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500">等级</p>
+                  <span className={`badge text-white ${getHazardLevelColor(selectedSource.level)} mt-1`}>
+                    {getHazardLevelText(selectedSource.level)}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500">位置</p>
+                  <p className="text-slate-800 font-medium mt-1">{selectedSource.location}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500">状态</p>
+                  <div className="mt-1">
+                    <StatusBadge status={selectedSource.status} />
+                  </div>
+                </div>
+                {selectedSource.lng && selectedSource.lat && (
+                  <>
+                    <div>
+                      <p className="text-sm text-slate-500">经度</p>
+                      <p className="text-slate-800 font-medium mt-1 font-mono">{selectedSource.lng.toFixed(6)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-slate-500">纬度</p>
+                      <p className="text-slate-800 font-medium mt-1 font-mono">{selectedSource.lat.toFixed(6)}</p>
+                    </div>
+                  </>
+                )}
               </div>
-              {selectedSource.lng && selectedSource.lat && (
-                <>
-                  <div>
-                    <p className="text-sm text-slate-500">经度</p>
-                    <p className="text-slate-800 font-medium mt-1 font-mono">{selectedSource.lng.toFixed(6)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-500">纬度</p>
-                    <p className="text-slate-800 font-medium mt-1 font-mono">{selectedSource.lat.toFixed(6)}</p>
-                  </div>
-                </>
-              )}
+              <div>
+                <p className="text-sm text-slate-500">管控措施</p>
+                <p className="text-slate-800 mt-1 bg-slate-50 p-3 rounded-lg">{selectedSource.controlMeasures}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm text-slate-500">管控措施</p>
-              <p className="text-slate-800 mt-1 bg-slate-50 p-3 rounded-lg">{selectedSource.controlMeasures}</p>
-            </div>
-          </div>
+          )
         )}
       </Modal>
     </PageContainer>

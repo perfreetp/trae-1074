@@ -101,6 +101,7 @@ export interface WorkTicket {
   applyTime: string;
   planStartTime: string;
   planEndTime: string;
+  safetyMeasures?: string;
   status: WorkTicketStatus;
   approvalRecords: ApprovalRecord[];
   preCheckItems: PreCheckItem[];

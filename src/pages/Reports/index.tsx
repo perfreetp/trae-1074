@@ -10,15 +10,27 @@ type TabType = 'score' | 'statistics' | 'warning';
 export default function Reports() {
   const [activeTab, setActiveTab] = useState<TabType>('score');
   const { state } = useStore();
-  const { enterpriseScores, enterprises, workTickets, warnings } = state;
+  const { enterprises, workTickets, warnings } = state;
 
-  const sortedScores = [...enterpriseScores].sort((a, b) => a.rank - b.rank);
+  const sortedScores = [...enterprises]
+    .sort((a, b) => b.score - a.score)
+    .map((e, idx) => ({
+      id: e.id,
+      enterpriseId: e.id,
+      enterpriseName: e.name,
+      totalScore: e.score,
+      safetyManagement: Math.round(e.score * 0.25),
+      riskControl: Math.round(e.score * 0.25),
+      operationStandard: Math.round(e.score * 0.2),
+      training: Math.round(e.score * 0.15),
+      emergency: Math.round(e.score * 0.15),
+      rank: idx + 1,
+    }));
 
-  const scoreTrendData = sortedScores.length > 0 ? sortedScores.map(s => s.totalScore) : [78, 80, 82, 85, 86, 88];
   const months = ['1月', '2月', '3月', '4月', '5月', '6月'];
-  const avgScore = scoreTrendData.length > 0 ? Math.round(scoreTrendData.reduce((a, b) => a + b, 0) / scoreTrendData.length) : 85;
-  const maxScore = scoreTrendData.length > 0 ? Math.max(...scoreTrendData) : 95;
-  const minScore = scoreTrendData.length > 0 ? Math.min(...scoreTrendData) : 75;
+  const avgScore = sortedScores.length > 0 ? Math.round(sortedScores.reduce((a, b) => a + b.totalScore, 0) / sortedScores.length) : 85;
+  const maxScore = sortedScores.length > 0 ? Math.max(...sortedScores.map(s => s.totalScore)) : 95;
+  const minScore = sortedScores.length > 0 ? Math.min(...sortedScores.map(s => s.totalScore)) : 75;
 
   const scoreTrendOption = {
     tooltip: { trigger: 'axis' },
@@ -151,8 +163,8 @@ export default function Reports() {
     ],
   };
 
-  const averageScore = enterpriseScores.length > 0
-    ? Math.round(enterpriseScores.reduce((sum, s) => sum + s.totalScore, 0) / enterpriseScores.length)
+  const averageScore = enterprises.length > 0
+    ? Math.round(enterprises.reduce((sum, e) => sum + e.score, 0) / enterprises.length)
     : 0;
 
   const exportCSV = () => {

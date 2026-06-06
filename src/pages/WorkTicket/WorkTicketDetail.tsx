@@ -170,6 +170,14 @@ export default function WorkTicketDetail() {
                 <p className="text-sm text-slate-500">计划结束时间</p>
                 <p className="text-slate-800 font-medium mt-1">{ticket.planEndTime}</p>
               </div>
+              {ticket.safetyMeasures && (
+                <div className="md:col-span-2">
+                  <p className="text-sm text-slate-500">安全措施</p>
+                  <div className="text-slate-800 mt-1 bg-slate-50 p-3 rounded-lg whitespace-pre-wrap">
+                    {ticket.safetyMeasures}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -435,6 +443,7 @@ function EditTicketModal({ open, onClose, ticket, enterprises, onSubmit }: any) 
     applicant: ticket.applicant,
     planStartTime: ticket.planStartTime,
     planEndTime: ticket.planEndTime,
+    safetyMeasures: ticket.safetyMeasures || '',
   });
 
   return (
@@ -523,6 +532,15 @@ function EditTicketModal({ open, onClose, ticket, enterprises, onSubmit }: any) 
               onChange={(e) => setFormData({ ...formData, planEndTime: e.target.value })}
             />
           </div>
+        </div>
+        <div>
+          <label className="label">安全措施</label>
+          <textarea
+            className="input min-h-[100px]"
+            placeholder="请输入作业安全措施"
+            value={formData.safetyMeasures}
+            onChange={(e) => setFormData({ ...formData, safetyMeasures: e.target.value })}
+          />
         </div>
       </div>
     </Modal>

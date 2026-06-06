@@ -73,6 +73,7 @@ export default function WorkTicket() {
       applyTime: getCurrentTime(),
       planStartTime: formData.planStartTime,
       planEndTime: formData.planEndTime,
+      safetyMeasures: formData.safetyMeasures,
       status: 'pending',
       approvalRecords: [],
       preCheckItems: generatePreCheckItems(ticketId, selectedType),

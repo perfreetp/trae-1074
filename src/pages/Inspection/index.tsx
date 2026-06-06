@@ -29,9 +29,11 @@ export default function Inspection() {
   const [executeModalOpen, setExecuteModalOpen] = useState(false);
   const [executingTask, setExecutingTask] = useState<InspectionTask | null>(null);
   const [currentPointIndex, setCurrentPointIndex] = useState(0);
-  const [checkResults, setCheckResults] = useState<Record<string, { status: 'normal' | 'abnormal'; description: string }>>({});
+  const [checkResults, setCheckResults] = useState<Record<string, { status: 'normal' | 'abnormal'; description: string; photos?: string[] }>>({});
   const [abnormalModalOpen, setAbnormalModalOpen] = useState(false);
   const [abnormalDescription, setAbnormalDescription] = useState('');
+  const [abnormalPhotos, setAbnormalPhotos] = useState<string[]>([]);
+  const [handlePhotos, setHandlePhotos] = useState<string[]>([]);
 
   const [rectificationDetailOpen, setRectificationDetailOpen] = useState(false);
   const [selectedRectification, setSelectedRectification] = useState<Rectification | null>(null);
@@ -134,10 +136,12 @@ export default function Inspection() {
       updatedPoints = [...selectedRoute.points, newPoint];
     }
 
+    const updatedRoute = { ...selectedRoute, points: updatedPoints.sort((a, b) => a.order - b.order) };
     dispatch({
       type: 'UPDATE_INSPECTION_ROUTE',
-      payload: { ...selectedRoute, points: updatedPoints.sort((a, b) => a.order - b.order) },
+      payload: updatedRoute,
     });
+    setSelectedRoute(updatedRoute);
     setPointModalOpen(false);
   };
 
@@ -145,10 +149,12 @@ export default function Inspection() {
     if (!selectedRoute) return;
     if (confirm('确定要删除这个巡检点吗？')) {
       const updatedPoints = selectedRoute.points.filter((p) => p.id !== pointId);
+      const updatedRoute = { ...selectedRoute, points: updatedPoints };
       dispatch({
         type: 'UPDATE_INSPECTION_ROUTE',
-        payload: { ...selectedRoute, points: updatedPoints },
+        payload: updatedRoute,
       });
+      setSelectedRoute(updatedRoute);
     }
   };
 
@@ -203,11 +209,33 @@ export default function Inspection() {
       setAbnormalDescription('');
       setAbnormalModalOpen(true);
     } else {
-      setCheckResults((prev) => ({
-        ...prev,
+      const newResults: Record<string, { status: 'normal' | 'abnormal'; description: string; photos?: string[] }> = {
+        ...checkResults,
         [currentPoint.id]: { status: 'normal', description: '' },
-      }));
-      goToNextPoint();
+      };
+      setCheckResults(newResults);
+
+      if (currentPointIndex < route.points.length - 1) {
+        setCurrentPointIndex((prev) => prev + 1);
+      } else {
+        finishInspectionWithResults(newResults);
+      }
+    }
+  };
+
+  const handleAbnormalPhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      const fileNames = Array.from(files).map((f) => f.name);
+      setAbnormalPhotos((prev) => [...prev, ...fileNames]);
+    }
+  };
+
+  const handleHandlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      const fileNames = Array.from(files).map((f) => f.name);
+      setHandlePhotos((prev) => [...prev, ...fileNames]);
     }
   };
 
@@ -217,24 +245,19 @@ export default function Inspection() {
     if (!route) return;
     const currentPoint = route.points[currentPointIndex];
 
-    setCheckResults((prev) => ({
-      ...prev,
-      [currentPoint.id]: { status: 'abnormal', description: abnormalDescription },
-    }));
+    const newResults: Record<string, { status: 'normal' | 'abnormal'; description: string; photos?: string[] }> = {
+      ...checkResults,
+      [currentPoint.id]: { status: 'abnormal', description: abnormalDescription, photos: abnormalPhotos },
+    };
+    setCheckResults(newResults);
     setAbnormalModalOpen(false);
     setAbnormalDescription('');
-    goToNextPoint();
-  };
-
-  const goToNextPoint = () => {
-    if (!executingTask) return;
-    const route = state.inspectionRoutes.find((r) => r.id === executingTask.routeId);
-    if (!route) return;
+    setAbnormalPhotos([]);
 
     if (currentPointIndex < route.points.length - 1) {
       setCurrentPointIndex((prev) => prev + 1);
     } else {
-      finishInspection();
+      finishInspectionWithResults(newResults);
     }
   };
 
@@ -244,13 +267,13 @@ export default function Inspection() {
     }
   };
 
-  const finishInspection = () => {
+  const finishInspectionWithResults = (results: Record<string, { status: 'normal' | 'abnormal'; description: string; photos?: string[] }>) => {
     if (!executingTask) return;
     const route = state.inspectionRoutes.find((r) => r.id === executingTask.routeId);
     if (!route) return;
 
     const records = route.points.map((point) => {
-      const result = checkResults[point.id] || { status: 'normal', description: '' };
+      const result = results[point.id] || { status: 'normal', description: '', photos: [] };
       return {
         id: generateId('rec'),
         taskId: executingTask.id,
@@ -259,6 +282,7 @@ export default function Inspection() {
         checkTime: getCurrentTime(),
         status: result.status,
         description: result.description,
+        photos: (result as any).photos || [],
       };
     });
 
@@ -277,7 +301,7 @@ export default function Inspection() {
     records
       .filter((r) => r.status === 'abnormal')
       .forEach((record) => {
-        const newRectification: Rectification = {
+        const newRectification: any = {
           id: generateId('rect'),
           source: '巡检异常',
           sourceId: record.id,
@@ -287,12 +311,18 @@ export default function Inspection() {
           description: record.description || '巡检发现异常',
           deadline: getCurrentTime().split(' ')[0] + ' 23:59:59',
           status: 'pending',
+          photos: (record as any).photos || [],
+          handlePhotos: [],
         };
         dispatch({ type: 'ADD_RECTIFICATION', payload: newRectification });
       });
 
     setExecuteModalOpen(false);
     setExecutingTask(null);
+  };
+
+  const finishInspection = () => {
+    finishInspectionWithResults(checkResults);
   };
 
   const openRectificationDetail = (rect: Rectification) => {
@@ -303,6 +333,7 @@ export default function Inspection() {
   const openHandleModal = (rect: Rectification) => {
     setSelectedRectification(rect);
     setHandleForm({ feedback: '' });
+    setHandlePhotos([]);
     setHandleModalOpen(true);
   };
 
@@ -310,6 +341,7 @@ export default function Inspection() {
     if (!selectedRectification || !handleForm.feedback) return;
 
     const newStatus = selectedRectification.status === 'pending' ? 'in_progress' : 'completed';
+    const existingHandlePhotos = (selectedRectification as any).handlePhotos || [];
     dispatch({
       type: 'UPDATE_RECTIFICATION',
       payload: {
@@ -317,9 +349,11 @@ export default function Inspection() {
         status: newStatus,
         feedback: handleForm.feedback,
         feedbackTime: getCurrentTime(),
-      },
+        handlePhotos: [...existingHandlePhotos, ...handlePhotos],
+      } as any,
     });
     setHandleModalOpen(false);
+    setHandlePhotos([]);
   };
 
   const openVerifyModal = (rect: Rectification) => {
@@ -946,13 +980,44 @@ export default function Inspection() {
             />
           </div>
           <div>
-            <label className="label">现场照片（模拟）</label>
-            <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center hover:border-primary-400 transition-colors cursor-pointer">
+            <label className="label">现场照片</label>
+            <div
+              className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-primary-400 transition-colors cursor-pointer"
+              onClick={() => document.getElementById('abnormal-photo-input')?.click()}
+            >
               <Upload size={32} className="mx-auto text-slate-400 mb-2" />
-              <p className="text-sm text-slate-500">点击选择照片或拖拽到此处</p>
-              <p className="text-xs text-slate-400 mt-1">支持 JPG、PNG 格式（模拟上传，不实际上传）</p>
-              <input type="file" className="hidden" accept="image/*" />
+              <p className="text-sm text-slate-500">点击选择照片</p>
+              <p className="text-xs text-slate-400 mt-1">支持 JPG、PNG 格式</p>
+              <input
+                id="abnormal-photo-input"
+                type="file"
+                className="hidden"
+                accept="image/*"
+                multiple
+                onChange={handleAbnormalPhotoSelect}
+              />
             </div>
+            {abnormalPhotos.length > 0 && (
+              <div className="mt-3 space-y-2">
+                <p className="text-sm font-medium text-slate-600">已选择照片：</p>
+                <div className="flex flex-wrap gap-2">
+                  {abnormalPhotos.map((name, idx) => (
+                    <div key={idx} className="bg-slate-100 px-3 py-1 rounded-full text-sm text-slate-700 flex items-center">
+                      <span className="truncate max-w-[150px]">{name}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAbnormalPhotos(abnormalPhotos.filter((_, i) => i !== idx));
+                        }}
+                        className="ml-2 text-slate-400 hover:text-red-500"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </Modal>
@@ -993,12 +1058,36 @@ export default function Inspection() {
               <p className="text-sm text-slate-500">问题描述</p>
               <p className="text-slate-700">{selectedRectification.description}</p>
             </div>
+            {(selectedRectification as any).photos && (selectedRectification as any).photos.length > 0 && (
+              <div>
+                <p className="text-sm text-slate-500 mb-2">异常现场照片</p>
+                <div className="flex flex-wrap gap-2">
+                  {(selectedRectification as any).photos.map((name: string, idx: number) => (
+                    <div key={idx} className="bg-slate-100 px-3 py-1 rounded-full text-sm text-slate-700 flex items-center">
+                      <span className="truncate max-w-[150px]">{name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {selectedRectification.feedback && (
               <div className="bg-slate-50 rounded-lg p-4">
                 <p className="text-sm text-slate-500 mb-1">整改反馈</p>
                 <p className="text-slate-700">{selectedRectification.feedback}</p>
                 {selectedRectification.feedbackTime && (
                   <p className="text-xs text-slate-400 mt-2">提交时间：{selectedRectification.feedbackTime}</p>
+                )}
+                {(selectedRectification as any).handlePhotos && (selectedRectification as any).handlePhotos.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-xs text-slate-500 mb-1">整改照片：</p>
+                    <div className="flex flex-wrap gap-2">
+                      {(selectedRectification as any).handlePhotos.map((name: string, idx: number) => (
+                        <div key={idx} className="bg-white px-2 py-1 rounded text-xs text-slate-600 flex items-center border border-slate-200">
+                          <span className="truncate max-w-[120px]">{name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
             )}
@@ -1040,13 +1129,44 @@ export default function Inspection() {
             />
           </div>
           <div>
-            <label className="label">整改照片（模拟）</label>
-            <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center hover:border-primary-400 transition-colors cursor-pointer">
+            <label className="label">整改照片</label>
+            <div
+              className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-primary-400 transition-colors cursor-pointer"
+              onClick={() => document.getElementById('handle-photo-input')?.click()}
+            >
               <Upload size={32} className="mx-auto text-slate-400 mb-2" />
-              <p className="text-sm text-slate-500">点击选择照片或拖拽到此处</p>
-              <p className="text-xs text-slate-400 mt-1">支持 JPG、PNG 格式（模拟上传，不实际上传）</p>
-              <input type="file" className="hidden" accept="image/*" />
+              <p className="text-sm text-slate-500">点击选择照片</p>
+              <p className="text-xs text-slate-400 mt-1">支持 JPG、PNG 格式</p>
+              <input
+                id="handle-photo-input"
+                type="file"
+                className="hidden"
+                accept="image/*"
+                multiple
+                onChange={handleHandlePhotoSelect}
+              />
             </div>
+            {handlePhotos.length > 0 && (
+              <div className="mt-3 space-y-2">
+                <p className="text-sm font-medium text-slate-600">已选择照片：</p>
+                <div className="flex flex-wrap gap-2">
+                  {handlePhotos.map((name, idx) => (
+                    <div key={idx} className="bg-slate-100 px-3 py-1 rounded-full text-sm text-slate-700 flex items-center">
+                      <span className="truncate max-w-[150px]">{name}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setHandlePhotos(handlePhotos.filter((_, i) => i !== idx));
+                        }}
+                        className="ml-2 text-slate-400 hover:text-red-500"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </Modal>
