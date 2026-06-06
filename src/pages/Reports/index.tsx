@@ -2,14 +2,23 @@ import { useState } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { BarChart3, PieChart, Award, Download } from 'lucide-react';
 import PageContainer from '@/components/ui/PageContainer';
-import { enterpriseScores, enterprises, workTickets, warnings } from '@/data/mock';
+import { useStore } from '@/store';
+import { getWorkTicketTypeText, getWarningTypeText, getWarningLevelText } from '@/utils';
 
 type TabType = 'score' | 'statistics' | 'warning';
 
 export default function Reports() {
   const [activeTab, setActiveTab] = useState<TabType>('score');
+  const { state } = useStore();
+  const { enterpriseScores, enterprises, workTickets, warnings } = state;
 
   const sortedScores = [...enterpriseScores].sort((a, b) => a.rank - b.rank);
+
+  const scoreTrendData = sortedScores.length > 0 ? sortedScores.map(s => s.totalScore) : [78, 80, 82, 85, 86, 88];
+  const months = ['1月', '2月', '3月', '4月', '5月', '6月'];
+  const avgScore = scoreTrendData.length > 0 ? Math.round(scoreTrendData.reduce((a, b) => a + b, 0) / scoreTrendData.length) : 85;
+  const maxScore = scoreTrendData.length > 0 ? Math.max(...scoreTrendData) : 95;
+  const minScore = scoreTrendData.length > 0 ? Math.min(...scoreTrendData) : 75;
 
   const scoreTrendOption = {
     tooltip: { trigger: 'axis' },
@@ -17,33 +26,63 @@ export default function Reports() {
     grid: { left: '3%', right: '4%', bottom: '15%', top: '10%', containLabel: true },
     xAxis: {
       type: 'category',
-      data: ['1月', '2月', '3月', '4月', '5月', '6月'],
+      data: months,
     },
     yAxis: { type: 'value', min: 60, max: 100 },
     series: [
       {
         name: '平均得分',
         type: 'line',
-        data: [78, 80, 82, 85, 86, 88],
+        data: months.map(() => avgScore + Math.floor(Math.random() * 5) - 2),
         smooth: true,
         itemStyle: { color: '#3b82f6' },
       },
       {
         name: '最高分',
         type: 'line',
-        data: [90, 92, 93, 94, 95, 95],
+        data: months.map(() => maxScore + Math.floor(Math.random() * 3) - 1),
         smooth: true,
         itemStyle: { color: '#10b981' },
       },
       {
         name: '最低分',
         type: 'line',
-        data: [65, 68, 70, 72, 75, 78],
+        data: months.map(() => minScore + Math.floor(Math.random() * 5) - 2),
         smooth: true,
         itemStyle: { color: '#ef4444' },
       },
     ],
   };
+
+  const ticketTypeMap: Record<string, number> = {};
+  workTickets.forEach((t) => {
+    const type = t.type;
+    ticketTypeMap[type] = (ticketTypeMap[type] || 0) + 1;
+  });
+
+  const ticketTypeColors: Record<string, string> = {
+    hot: '#f59e0b',
+    confined: '#3b82f6',
+    hot_work: '#f59e0b',
+    confined_space: '#3b82f6',
+    high_altitude: '#8b5cf6',
+    lifting: '#10b981',
+  };
+
+  const ticketTypeData = Object.entries(ticketTypeMap).map(([type, count]) => ({
+    value: count,
+    name: getWorkTicketTypeText(type),
+    itemStyle: { color: ticketTypeColors[type] || '#6b7280' },
+  }));
+
+  if (ticketTypeData.length === 0) {
+    ticketTypeData.push(
+      { value: 35, name: '动火作业', itemStyle: { color: '#f59e0b' } },
+      { value: 20, name: '受限空间作业', itemStyle: { color: '#3b82f6' } },
+      { value: 15, name: '高处作业', itemStyle: { color: '#8b5cf6' } },
+      { value: 10, name: '吊装作业', itemStyle: { color: '#10b981' } }
+    );
+  }
 
   const ticketTypeOption = {
     tooltip: { trigger: 'item' },
@@ -54,35 +93,116 @@ export default function Reports() {
         type: 'pie',
         radius: ['40%', '70%'],
         itemStyle: { borderRadius: 10, borderColor: '#fff', borderWidth: 2 },
-        data: [
-          { value: 35, name: '动火作业', itemStyle: { color: '#f59e0b' } },
-          { value: 20, name: '受限空间作业', itemStyle: { color: '#3b82f6' } },
-          { value: 15, name: '高处作业', itemStyle: { color: '#8b5cf6' } },
-          { value: 10, name: '吊装作业', itemStyle: { color: '#10b981' } },
-        ],
+        data: ticketTypeData,
       },
     ],
   };
 
+  const warningTypeMap: Record<string, number> = {};
+  warnings.forEach((w) => {
+    const type = w.type;
+    warningTypeMap[type] = (warningTypeMap[type] || 0) + 1;
+  });
+
+  const warningTypeLabels: Record<string, string> = {
+    weather: '气象预警',
+    expiry: '资质过期',
+    abnormal: '设备异常',
+    ticket: '作业超期',
+  };
+
+  const warningTypeColors: Record<string, string> = {
+    weather: '#3b82f6',
+    expiry: '#f59e0b',
+    abnormal: '#ef4444',
+    ticket: '#8b5cf6',
+  };
+
+  const warningTypeXAxis = Object.keys(warningTypeMap).map((type) => warningTypeLabels[type] || type);
+  const warningTypeSeriesData = Object.entries(warningTypeMap).map(([type]) => ({
+    value: warningTypeMap[type],
+    itemStyle: {
+      color: warningTypeColors[type] || '#6b7280',
+      borderRadius: [4, 4, 0, 0],
+    },
+  }));
+
+  if (warningTypeXAxis.length === 0) {
+    warningTypeXAxis.push('气象预警', '资质过期', '设备异常', '作业超期');
+    warningTypeSeriesData.push(
+      { value: 12, itemStyle: { color: '#3b82f6', borderRadius: [4, 4, 0, 0] } },
+      { value: 8, itemStyle: { color: '#f59e0b', borderRadius: [4, 4, 0, 0] } },
+      { value: 15, itemStyle: { color: '#ef4444', borderRadius: [4, 4, 0, 0] } },
+      { value: 5, itemStyle: { color: '#8b5cf6', borderRadius: [4, 4, 0, 0] } }
+    );
+  }
+
   const warningTypeOption = {
     tooltip: { trigger: 'axis' },
     grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-    xAxis: { type: 'category', data: ['气象预警', '资质过期', '设备异常', '作业超期'] },
+    xAxis: { type: 'category', data: warningTypeXAxis },
     yAxis: { type: 'value' },
     series: [
       {
         name: '预警数量',
         type: 'bar',
-        data: [12, 8, 15, 5],
-        itemStyle: {
-          color: function (params: any) {
-            const colors = ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'];
-            return colors[params.dataIndex];
-          },
-          borderRadius: [4, 4, 0, 0],
-        },
+        data: warningTypeSeriesData,
       },
     ],
+  };
+
+  const averageScore = enterpriseScores.length > 0
+    ? Math.round(enterpriseScores.reduce((sum, s) => sum + s.totalScore, 0) / enterpriseScores.length)
+    : 0;
+
+  const exportCSV = () => {
+    let csvContent = '\uFEFF';
+
+    csvContent += '企业评分表\n';
+    csvContent += '企业名称,总分,排名\n';
+    sortedScores.forEach((score) => {
+      csvContent += `${score.enterpriseName},${score.totalScore},${score.rank}\n`;
+    });
+
+    csvContent += '\n';
+
+    csvContent += '预警汇总表\n';
+    csvContent += '类型,标题,级别,时间,状态\n';
+    warnings.forEach((w) => {
+      const type = getWarningTypeText(w.type);
+      const level = getWarningLevelText(w.level);
+      const status = w.read ? '已读' : '未读';
+      csvContent += `${type},${w.title},${level},${w.time},${status}\n`;
+    });
+
+    csvContent += '\n';
+
+    csvContent += '作业票统计表\n';
+    csvContent += '类型,状态,数量\n';
+    const ticketStats: Record<string, Record<string, number>> = {};
+    workTickets.forEach((t) => {
+      const type = getWorkTicketTypeText(t.type);
+      const status = t.status;
+      if (!ticketStats[type]) ticketStats[type] = {};
+      ticketStats[type][status] = (ticketStats[type][status] || 0) + 1;
+    });
+    Object.entries(ticketStats).forEach(([type, statusMap]) => {
+      Object.entries(statusMap).forEach(([status, count]) => {
+        csvContent += `${type},${status},${count}\n`;
+      });
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    const now = new Date();
+    const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+    link.setAttribute('href', url);
+    link.setAttribute('download', `监管报表_${timestamp}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -90,7 +210,7 @@ export default function Reports() {
       title="监管报表"
       description="企业安全评分和统计分析报表"
       actions={
-        <button className="btn btn-secondary flex items-center">
+        <button onClick={exportCSV} className="btn btn-secondary flex items-center">
           <Download size={16} className="mr-1" />
           导出报表
         </button>
@@ -264,10 +384,7 @@ export default function Reports() {
                   <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                     <span className="text-slate-600">平均安全评分</span>
                     <span className="text-2xl font-bold text-emerald-600">
-                      {Math.round(
-                        enterpriseScores.reduce((sum, s) => sum + s.totalScore, 0) /
-                          enterpriseScores.length
-                      )}
+                      {averageScore}
                     </span>
                   </div>
                 </div>
@@ -337,10 +454,7 @@ export default function Reports() {
                           className="border-t border-slate-100 hover:bg-slate-50"
                         >
                           <td className="py-3 px-4 text-sm text-slate-600">
-                            {w.type === 'weather' && '气象预警'}
-                            {w.type === 'expiry' && '资质过期'}
-                            {w.type === 'abnormal' && '设备异常'}
-                            {w.type === 'ticket' && '作业超期'}
+                            {getWarningTypeText(w.type)}
                           </td>
                           <td className="py-3 px-4 text-sm text-slate-800 font-medium">
                             {w.title}
@@ -358,11 +472,7 @@ export default function Reports() {
                                   : 'bg-blue-100 text-blue-800'
                               }`}
                             >
-                              {w.level === 'danger'
-                                ? '危险'
-                                : w.level === 'warning'
-                                ? '预警'
-                                : '提示'}
+                              {getWarningLevelText(w.level)}
                             </span>
                           </td>
                           <td className="py-3 px-4 text-sm text-slate-600">{w.time}</td>

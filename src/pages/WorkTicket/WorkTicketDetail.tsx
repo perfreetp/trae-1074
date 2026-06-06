@@ -1,14 +1,24 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, X, Clock, User, FileCheck, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Check, X, Clock, User, FileCheck, AlertCircle, Edit } from 'lucide-react';
 import PageContainer from '@/components/ui/PageContainer';
-import { workTickets } from '@/data/mock';
+import Modal from '@/components/ui/Modal';
+import { useStore } from '@/store';
 import { getTicketStatusColor, getTicketStatusText, getTicketTypeText } from '@/utils';
+import type { ApprovalRecord, PreCheckItem } from '@/types';
 
 export default function WorkTicketDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { state, dispatch, generateId, getCurrentTime } = useStore();
+  const [approvalModalOpen, setApprovalModalOpen] = useState(false);
+  const [approvalType, setApprovalType] = useState<'approved' | 'rejected'>('approved');
+  const [approvalOpinion, setApprovalOpinion] = useState('');
+  const [preCheckMode, setPreCheckMode] = useState(false);
+  const [checkedItems, setCheckedItems] = useState<string[]>([]);
+  const [editModalOpen, setEditModalOpen] = useState(false);
 
-  const ticket = workTickets.find((t) => t.id === id);
+  const ticket = state.workTickets.find((t) => t.id === id);
 
   if (!ticket) {
     return (
@@ -17,6 +27,84 @@ export default function WorkTicketDetail() {
       </PageContainer>
     );
   }
+
+  const allChecked = ticket.preCheckItems.every((item) => checkedItems.includes(item.id));
+
+  const handleApproval = (type: 'approved' | 'rejected') => {
+    setApprovalType(type);
+    setApprovalOpinion('');
+    setApprovalModalOpen(true);
+  };
+
+  const submitApproval = () => {
+    const record: ApprovalRecord = {
+      id: generateId('ar'),
+      ticketId: ticket.id,
+      approver: '当前用户',
+      role: approvalType === 'approved' ? '车间主任' : '安全员',
+      opinion: approvalOpinion || (approvalType === 'approved' ? '同意' : '驳回'),
+      status: approvalType,
+      time: getCurrentTime(),
+    };
+
+    const updatedTicket = {
+      ...ticket,
+      status: approvalType,
+      approvalRecords: [...ticket.approvalRecords, record],
+    };
+
+    dispatch({ type: 'UPDATE_WORK_TICKET', payload: updatedTicket });
+    setApprovalModalOpen(false);
+  };
+
+  const togglePreCheckItem = (itemId: string) => {
+    setCheckedItems((prev) =>
+      prev.includes(itemId) ? prev.filter((id) => id !== itemId) : [...prev, itemId]
+    );
+  };
+
+  const startPreCheck = () => {
+    setPreCheckMode(true);
+    setCheckedItems(ticket.preCheckItems.filter((item) => item.checked).map((item) => item.id));
+  };
+
+  const startWork = () => {
+    const updatedPreCheckItems: PreCheckItem[] = ticket.preCheckItems.map((item) => ({
+      ...item,
+      checked: checkedItems.includes(item.id),
+      checkedBy: checkedItems.includes(item.id) ? '当前用户' : item.checkedBy,
+      checkedTime: checkedItems.includes(item.id) ? getCurrentTime() : item.checkedTime,
+    }));
+
+    const updatedTicket = {
+      ...ticket,
+      status: 'in_progress' as const,
+      preCheckItems: updatedPreCheckItems,
+    };
+
+    dispatch({ type: 'UPDATE_WORK_TICKET', payload: updatedTicket });
+    setPreCheckMode(false);
+  };
+
+  const completeWork = () => {
+    const updatedTicket = {
+      ...ticket,
+      status: 'completed' as const,
+    };
+    dispatch({ type: 'UPDATE_WORK_TICKET', payload: updatedTicket });
+  };
+
+  const handleEditSubmit = (formData: any) => {
+    const enterprise = state.enterprises.find((e) => e.id === formData.enterpriseId);
+    const updatedTicket = {
+      ...ticket,
+      ...formData,
+      enterpriseName: enterprise?.name || ticket.enterpriseName,
+      status: 'pending' as const,
+    };
+    dispatch({ type: 'UPDATE_WORK_TICKET', payload: updatedTicket });
+    setEditModalOpen(false);
+  };
 
   return (
     <PageContainer
@@ -140,41 +228,67 @@ export default function WorkTicketDetail() {
                 作业前确认项
               </h3>
               <div className="space-y-2">
-                {ticket.preCheckItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className={`p-3 rounded-lg border ${
-                      item.checked
-                        ? 'bg-emerald-50 border-emerald-200'
-                        : 'bg-slate-50 border-slate-200'
-                    }`}
-                  >
-                    <div className="flex items-center">
-                      <div
-                        className={`w-5 h-5 rounded border-2 flex items-center justify-center mr-3 ${
-                          item.checked
-                            ? 'bg-emerald-500 border-emerald-500 text-white'
-                            : 'border-slate-300'
-                        }`}
-                      >
-                        {item.checked && <Check size={12} />}
-                      </div>
-                      <span
-                        className={`flex-1 ${
-                          item.checked ? 'text-slate-800' : 'text-slate-500'
-                        }`}
-                      >
-                        {item.item}
-                      </span>
-                      {item.checkedBy && (
-                        <span className="text-xs text-slate-500">
-                          {item.checkedBy} / {item.checkedTime}
+                {ticket.preCheckItems.map((item) => {
+                  const isChecked = preCheckMode
+                    ? checkedItems.includes(item.id)
+                    : item.checked;
+                  return (
+                    <div
+                      key={item.id}
+                      className={`p-3 rounded-lg border ${
+                        isChecked
+                          ? 'bg-emerald-50 border-emerald-200'
+                          : 'bg-slate-50 border-slate-200'
+                      } ${preCheckMode ? 'cursor-pointer hover:border-emerald-300' : ''}`}
+                      onClick={() => preCheckMode && togglePreCheckItem(item.id)}
+                    >
+                      <div className="flex items-center">
+                        <div
+                          className={`w-5 h-5 rounded border-2 flex items-center justify-center mr-3 ${
+                            isChecked
+                              ? 'bg-emerald-500 border-emerald-500 text-white'
+                              : 'border-slate-300'
+                          }`}
+                        >
+                          {isChecked && <Check size={12} />}
+                        </div>
+                        <span
+                          className={`flex-1 ${
+                            isChecked ? 'text-slate-800' : 'text-slate-500'
+                          }`}
+                        >
+                          {item.item}
                         </span>
-                      )}
+                        {(item.checkedBy || (preCheckMode && checkedItems.includes(item.id))) && (
+                          <span className="text-xs text-slate-500">
+                            {item.checkedBy || '当前用户'} / {item.checkedTime || getCurrentTime()}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
+              {preCheckMode && (
+                <div className="mt-4 flex justify-end space-x-3">
+                  <button
+                    onClick={() => {
+                      setPreCheckMode(false);
+                      setCheckedItems([]);
+                    }}
+                    className="btn btn-secondary"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={startWork}
+                    disabled={!allChecked}
+                    className="btn btn-primary"
+                  >
+                    开始作业
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -243,24 +357,174 @@ export default function WorkTicketDetail() {
             <div className="space-y-3">
               {ticket.status === 'pending' && (
                 <>
-                  <button className="btn btn-success w-full">审批通过</button>
-                  <button className="btn btn-danger w-full">驳回</button>
+                  <button onClick={() => handleApproval('approved')} className="btn btn-success w-full">
+                    审批通过
+                  </button>
+                  <button onClick={() => handleApproval('rejected')} className="btn btn-danger w-full">
+                    驳回
+                  </button>
                 </>
               )}
-              {ticket.status === 'approved' && (
-                <button className="btn btn-primary w-full">开始作业前确认</button>
+              {ticket.status === 'approved' && !preCheckMode && (
+                <button onClick={startPreCheck} className="btn btn-primary w-full">
+                  开始作业前确认
+                </button>
               )}
               {ticket.status === 'in_progress' && (
-                <button className="btn btn-success w-full">完成作业</button>
+                <button onClick={completeWork} className="btn btn-success w-full">
+                  完成作业
+                </button>
               )}
-              {(ticket.status === 'draft' || ticket.status === 'rejected') && (
-                <button className="btn btn-primary w-full">编辑并提交</button>
+              {ticket.status === 'rejected' && (
+                <button onClick={() => setEditModalOpen(true)} className="btn btn-primary w-full flex items-center justify-center">
+                  <Edit size={16} className="mr-1" />
+                  编辑并重新提交
+                </button>
               )}
               <button className="btn btn-secondary w-full">打印作业票</button>
             </div>
           </div>
         </div>
       </div>
+
+      <Modal
+        open={approvalModalOpen}
+        onClose={() => setApprovalModalOpen(false)}
+        title={approvalType === 'approved' ? '审批通过' : '驳回'}
+        size="md"
+        footer={
+          <>
+            <button onClick={() => setApprovalModalOpen(false)} className="btn btn-secondary">
+              取消
+            </button>
+            <button onClick={submitApproval} className={`btn ${approvalType === 'approved' ? 'btn-success' : 'btn-danger'}`}>
+              确认
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-slate-600">
+            {approvalType === 'approved' ? '请输入审批意见（可选）：' : '请输入驳回原因：'}
+          </p>
+          <textarea
+            className="input min-h-24"
+            placeholder={approvalType === 'approved' ? '同意' : '请说明驳回原因...'}
+            value={approvalOpinion}
+            onChange={(e) => setApprovalOpinion(e.target.value)}
+          />
+        </div>
+      </Modal>
+
+      <EditTicketModal
+        open={editModalOpen}
+        onClose={() => setEditModalOpen(false)}
+        ticket={ticket}
+        enterprises={state.enterprises}
+        onSubmit={handleEditSubmit}
+      />
     </PageContainer>
+  );
+}
+
+function EditTicketModal({ open, onClose, ticket, enterprises, onSubmit }: any) {
+  const [formData, setFormData] = useState({
+    enterpriseId: ticket.enterpriseId,
+    location: ticket.location,
+    workContent: ticket.workContent,
+    applicant: ticket.applicant,
+    planStartTime: ticket.planStartTime,
+    planEndTime: ticket.planEndTime,
+  });
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="编辑作业票"
+      size="md"
+      footer={
+        <>
+          <button onClick={onClose} className="btn btn-secondary">
+            取消
+          </button>
+          <button
+            onClick={() => onSubmit(formData)}
+            disabled={!formData.enterpriseId || !formData.location || !formData.workContent || !formData.applicant || !formData.planStartTime || !formData.planEndTime}
+            className="btn btn-primary"
+          >
+            重新提交
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div>
+          <label className="label">所属企业</label>
+          <select
+            className="input"
+            value={formData.enterpriseId}
+            onChange={(e) => setFormData({ ...formData, enterpriseId: e.target.value })}
+          >
+            <option value="">请选择企业</option>
+            {enterprises.map((e: any) => (
+              <option key={e.id} value={e.id}>
+                {e.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label">作业地点</label>
+          <input
+            type="text"
+            className="input"
+            placeholder="请输入作业地点"
+            value={formData.location}
+            onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="label">作业内容</label>
+          <input
+            type="text"
+            className="input"
+            placeholder="请输入作业内容"
+            value={formData.workContent}
+            onChange={(e) => setFormData({ ...formData, workContent: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="label">申请人</label>
+          <input
+            type="text"
+            className="input"
+            placeholder="请输入申请人姓名"
+            value={formData.applicant}
+            onChange={(e) => setFormData({ ...formData, applicant: e.target.value })}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label">计划开始时间</label>
+            <input
+              type="datetime-local"
+              className="input"
+              value={formData.planStartTime}
+              onChange={(e) => setFormData({ ...formData, planStartTime: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="label">计划结束时间</label>
+            <input
+              type="datetime-local"
+              className="input"
+              value={formData.planEndTime}
+              onChange={(e) => setFormData({ ...formData, planEndTime: e.target.value })}
+            />
+          </div>
+        </div>
+      </div>
+    </Modal>
   );
 }

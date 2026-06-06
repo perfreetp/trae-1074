@@ -82,6 +82,37 @@ export function getTicketTypeText(type: string): string {
   return type === 'hot' ? '动火作业' : '受限空间作业';
 }
 
+export function getWorkTicketTypeText(type: string): string {
+  const texts: Record<string, string> = {
+    hot: '动火作业',
+    confined: '受限空间作业',
+    hot_work: '动火作业',
+    confined_space: '受限空间作业',
+    high_altitude: '高处作业',
+    lifting: '吊装作业',
+  };
+  return texts[type] || type;
+}
+
+export function getWarningTypeText(type: string): string {
+  const texts: Record<string, string> = {
+    weather: '气象预警',
+    expiry: '资质过期',
+    abnormal: '设备异常',
+    ticket: '作业超期',
+  };
+  return texts[type] || type;
+}
+
+export function getWarningLevelText(level: string): string {
+  const texts: Record<string, string> = {
+    info: '提示',
+    warning: '预警',
+    danger: '危险',
+  };
+  return texts[level] || level;
+}
+
 export function getStatusColor(status: string): string {
   const colors: Record<string, string> = {
     normal: 'bg-green-100 text-green-800',

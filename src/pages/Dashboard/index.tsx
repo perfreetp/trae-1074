@@ -2,37 +2,49 @@ import { Building2, AlertTriangle, FileText, Clock } from 'lucide-react';
 import ReactECharts from 'echarts-for-react';
 import PageContainer from '@/components/ui/PageContainer';
 import StatCard from '@/components/ui/StatCard';
-import {
-  enterprises,
-  hazardSources,
-  workTickets,
-  warnings,
-  activities,
-  rectifications,
-} from '@/data/mock';
+import { useStore } from '@/store';
 import {
   getRiskLevelColor,
   getRiskLevelText,
   getWarningLevelColor,
   getWarningTypeIcon,
+  getWorkTicketTypeText,
 } from '@/utils';
 
 export default function Dashboard() {
+  const { state } = useStore();
+  const { enterprises, hazardSources, workTickets, warnings, activities, rectifications } = state;
+
   const pendingTickets = workTickets.filter((t) => t.status === 'pending').length;
   const pendingRectifications = rectifications.filter(
     (r) => r.status === 'pending' || r.status === 'in_progress'
   ).length;
 
-  const ticketTrendOption = {
-    tooltip: { trigger: 'axis' },
-    legend: { data: ['动火作业', '受限空间作业'], bottom: 0 },
-    grid: { left: '3%', right: '4%', bottom: '15%', top: '10%', containLabel: true },
-    xAxis: {
-      type: 'category',
-      data: ['6/1', '6/2', '6/3', '6/4', '6/5', '6/6', '6/7'],
-    },
-    yAxis: { type: 'value' },
-    series: [
+  const ticketTypeMap: Record<string, { name: string; color: string; count: number }> = {};
+  workTickets.forEach((t) => {
+    const type = t.type;
+    if (!ticketTypeMap[type]) {
+      ticketTypeMap[type] = {
+        name: getWorkTicketTypeText(type),
+        color: type === 'hot' ? '#f59e0b' : type === 'confined' ? '#3b82f6' : '#10b981',
+        count: 0,
+      };
+    }
+    ticketTypeMap[type].count++;
+  });
+
+  const ticketTypes = Object.values(ticketTypeMap);
+  const weekDays = ['6/1', '6/2', '6/3', '6/4', '6/5', '6/6', '6/7'];
+
+  const ticketTrendSeries = ticketTypes.map((type) => ({
+    name: type.name,
+    type: 'bar',
+    data: weekDays.map(() => Math.floor(Math.random() * type.count) + Math.ceil(type.count / 2)),
+    itemStyle: { color: type.color },
+  }));
+
+  if (ticketTrendSeries.length === 0) {
+    ticketTrendSeries.push(
       {
         name: '动火作业',
         type: 'bar',
@@ -44,9 +56,28 @@ export default function Dashboard() {
         type: 'bar',
         data: [2, 4, 3, 5, 2, 3, 4],
         itemStyle: { color: '#3b82f6' },
-      },
-    ],
+      }
+    );
+  }
+
+  const ticketTrendOption = {
+    tooltip: { trigger: 'axis' },
+    legend: { data: ticketTrendSeries.map((s) => s.name), bottom: 0 },
+    grid: { left: '3%', right: '4%', bottom: '15%', top: '10%', containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: weekDays,
+    },
+    yAxis: { type: 'value' },
+    series: ticketTrendSeries,
   };
+
+  const riskCount = { high: 0, medium: 0, low: 0 };
+  enterprises.forEach((e) => {
+    if (e.riskLevel === 'high') riskCount.high++;
+    else if (e.riskLevel === 'medium') riskCount.medium++;
+    else riskCount.low++;
+  });
 
   const riskDistributionOption = {
     tooltip: { trigger: 'item' },
@@ -64,9 +95,9 @@ export default function Dashboard() {
         },
         labelLine: { show: false },
         data: [
-          { value: 2, name: '高风险', itemStyle: { color: '#ef4444' } },
-          { value: 2, name: '中风险', itemStyle: { color: '#f59e0b' } },
-          { value: 2, name: '低风险', itemStyle: { color: '#10b981' } },
+          { value: riskCount.high, name: '高风险', itemStyle: { color: '#ef4444' } },
+          { value: riskCount.medium, name: '中风险', itemStyle: { color: '#f59e0b' } },
+          { value: riskCount.low, name: '低风险', itemStyle: { color: '#10b981' } },
         ],
       },
     ],

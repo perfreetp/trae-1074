@@ -2,16 +2,31 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Plus, Eye, Filter, Flame, Box } from 'lucide-react';
 import PageContainer from '@/components/ui/PageContainer';
-import { workTickets } from '@/data/mock';
+import Modal from '@/components/ui/Modal';
+import { useStore } from '@/store';
 import { getTicketStatusColor, getTicketStatusText, getTicketTypeText } from '@/utils';
+import type { WorkTicket, WorkTicketType, PreCheckItem } from '@/types';
 
 export default function WorkTicket() {
   const navigate = useNavigate();
+  const { state, dispatch, generateId, getCurrentTime } = useStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [step, setStep] = useState<'select' | 'form'>('select');
+  const [selectedType, setSelectedType] = useState<WorkTicketType | null>(null);
+  const [formData, setFormData] = useState({
+    enterpriseId: '',
+    location: '',
+    workContent: '',
+    applicant: '',
+    planStartTime: '',
+    planEndTime: '',
+    safetyMeasures: '',
+  });
 
-  const filteredTickets = workTickets.filter((t) => {
+  const filteredTickets = state.workTickets.filter((t) => {
     const matchSearch =
       t.ticketNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.enterpriseName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -21,12 +36,76 @@ export default function WorkTicket() {
     return matchSearch && matchType && matchStatus;
   });
 
+  const generatePreCheckItems = (ticketId: string, type: WorkTicketType): PreCheckItem[] => {
+    const items = type === 'hot'
+      ? ['可燃气体检测', '消防器材到位', '作业人员持证']
+      : ['氧含量检测', '有毒气体检测', '通风设备运行', '监护人员到位'];
+    
+    return items.map((item) => ({
+      id: generateId('pci'),
+      ticketId,
+      item,
+      checked: false,
+    }));
+  };
+
+  const handleSelectType = (type: WorkTicketType) => {
+    setSelectedType(type);
+    setStep('form');
+  };
+
+  const handleSubmit = () => {
+    if (!selectedType || !formData.enterpriseId) return;
+    
+    const enterprise = state.enterprises.find((e) => e.id === formData.enterpriseId);
+    const ticketId = generateId('wt');
+    const ticketNo = `ZP${Date.now().toString().slice(-8)}`;
+    
+    const newTicket: WorkTicket = {
+      id: ticketId,
+      ticketNo,
+      type: selectedType,
+      enterpriseId: formData.enterpriseId,
+      enterpriseName: enterprise?.name || '',
+      location: formData.location,
+      workContent: formData.workContent,
+      applicant: formData.applicant,
+      applyTime: getCurrentTime(),
+      planStartTime: formData.planStartTime,
+      planEndTime: formData.planEndTime,
+      status: 'pending',
+      approvalRecords: [],
+      preCheckItems: generatePreCheckItems(ticketId, selectedType),
+    };
+
+    dispatch({ type: 'ADD_WORK_TICKET', payload: newTicket });
+    resetForm();
+    setCreateModalOpen(false);
+  };
+
+  const resetForm = () => {
+    setStep('select');
+    setSelectedType(null);
+    setFormData({
+      enterpriseId: '',
+      location: '',
+      workContent: '',
+      applicant: '',
+      planStartTime: '',
+      planEndTime: '',
+      safetyMeasures: '',
+    });
+  };
+
   return (
     <PageContainer
       title="作业票证"
       description="管理动火和受限空间作业票证"
       actions={
-        <button className="btn btn-primary flex items-center">
+        <button
+          onClick={() => setCreateModalOpen(true)}
+          className="btn btn-primary flex items-center"
+        >
           <Plus size={16} className="mr-1" />
           新建作业票
         </button>
@@ -40,7 +119,7 @@ export default function WorkTicket() {
           <div>
             <p className="text-sm text-slate-500">动火作业票</p>
             <p className="text-xl font-bold text-slate-800">
-              {workTickets.filter((t) => t.type === 'hot').length}
+              {state.workTickets.filter((t) => t.type === 'hot').length}
             </p>
           </div>
         </div>
@@ -51,7 +130,7 @@ export default function WorkTicket() {
           <div>
             <p className="text-sm text-slate-500">受限空间作业</p>
             <p className="text-xl font-bold text-slate-800">
-              {workTickets.filter((t) => t.type === 'confined').length}
+              {state.workTickets.filter((t) => t.type === 'confined').length}
             </p>
           </div>
         </div>
@@ -62,7 +141,7 @@ export default function WorkTicket() {
           <div>
             <p className="text-sm text-slate-500">待审批</p>
             <p className="text-xl font-bold text-slate-800">
-              {workTickets.filter((t) => t.status === 'pending').length}
+              {state.workTickets.filter((t) => t.status === 'pending').length}
             </p>
           </div>
         </div>
@@ -73,7 +152,7 @@ export default function WorkTicket() {
           <div>
             <p className="text-sm text-slate-500">进行中</p>
             <p className="text-xl font-bold text-slate-800">
-              {workTickets.filter((t) => t.status === 'in_progress').length}
+              {state.workTickets.filter((t) => t.status === 'in_progress').length}
             </p>
           </div>
         </div>
@@ -190,6 +269,140 @@ export default function WorkTicket() {
           </div>
         </div>
       </div>
+
+      <Modal
+        open={createModalOpen}
+        onClose={() => {
+          setCreateModalOpen(false);
+          resetForm();
+        }}
+        title={step === 'select' ? '选择作业类型' : '新建作业票'}
+        size="md"
+        footer={
+          step === 'form' ? (
+            <>
+              <button
+                onClick={() => {
+                  setStep('select');
+                  setSelectedType(null);
+                }}
+                className="btn btn-secondary"
+              >
+                上一步
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={!formData.enterpriseId || !formData.location || !formData.workContent || !formData.applicant || !formData.planStartTime || !formData.planEndTime}
+                className="btn btn-primary"
+              >
+                提交
+              </button>
+            </>
+          ) : undefined
+        }
+      >
+        {step === 'select' ? (
+          <div className="grid grid-cols-2 gap-4">
+            <button
+              onClick={() => handleSelectType('hot')}
+              className="p-6 border-2 border-slate-200 rounded-xl hover:border-amber-400 hover:bg-amber-50 transition-all text-left"
+            >
+              <div className="p-3 bg-amber-100 rounded-lg w-fit mb-3">
+                <Flame size={28} className="text-amber-600" />
+              </div>
+              <h4 className="font-semibold text-slate-800 mb-1">动火作业</h4>
+              <p className="text-sm text-slate-500">在禁火区进行焊接、切割等产生明火的作业</p>
+            </button>
+            <button
+              onClick={() => handleSelectType('confined')}
+              className="p-6 border-2 border-slate-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-all text-left"
+            >
+              <div className="p-3 bg-blue-100 rounded-lg w-fit mb-3">
+                <Box size={28} className="text-blue-600" />
+              </div>
+              <h4 className="font-semibold text-slate-800 mb-1">受限空间作业</h4>
+              <p className="text-sm text-slate-500">进入储罐、管道、地下室等受限空间作业</p>
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="label">所属企业</label>
+              <select
+                className="input"
+                value={formData.enterpriseId}
+                onChange={(e) => setFormData({ ...formData, enterpriseId: e.target.value })}
+              >
+                <option value="">请选择企业</option>
+                {state.enterprises.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label">作业地点</label>
+              <input
+                type="text"
+                className="input"
+                placeholder="请输入作业地点"
+                value={formData.location}
+                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="label">作业内容</label>
+              <input
+                type="text"
+                className="input"
+                placeholder="请输入作业内容"
+                value={formData.workContent}
+                onChange={(e) => setFormData({ ...formData, workContent: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="label">申请人</label>
+              <input
+                type="text"
+                className="input"
+                placeholder="请输入申请人姓名"
+                value={formData.applicant}
+                onChange={(e) => setFormData({ ...formData, applicant: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label">计划开始时间</label>
+                <input
+                  type="datetime-local"
+                  className="input"
+                  value={formData.planStartTime}
+                  onChange={(e) => setFormData({ ...formData, planStartTime: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label">计划结束时间</label>
+                <input
+                  type="datetime-local"
+                  className="input"
+                  value={formData.planEndTime}
+                  onChange={(e) => setFormData({ ...formData, planEndTime: e.target.value })}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="label">安全措施</label>
+              <textarea
+                className="input min-h-24"
+                placeholder="请输入安全措施"
+                value={formData.safetyMeasures}
+                onChange={(e) => setFormData({ ...formData, safetyMeasures: e.target.value })}
+              />
+            </div>
+          </div>
+        )}
+      </Modal>
     </PageContainer>
   );
 }

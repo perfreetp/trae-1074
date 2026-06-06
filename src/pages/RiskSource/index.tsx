@@ -1,15 +1,33 @@
 import { useState } from 'react';
-import { MapPin, AlertTriangle, Plus, Eye } from 'lucide-react';
+import { MapPin, AlertTriangle, Plus, Eye, Edit } from 'lucide-react';
 import PageContainer from '@/components/ui/PageContainer';
+import Modal from '@/components/ui/Modal';
 import StatusBadge from '@/components/ui/StatusBadge';
-import { hazardSources } from '@/data/mock';
+import { useStore } from '@/store';
 import { getHazardLevelColor, getHazardLevelText } from '@/utils';
+import type { HazardSource } from '@/types';
 
 export default function RiskSource() {
+  const { state, dispatch, generateId } = useStore();
   const [levelFilter, setLevelFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [selectedSource, setSelectedSource] = useState<HazardSource | null>(null);
+  const [formData, setFormData] = useState({
+    enterpriseId: '',
+    name: '',
+    type: '',
+    level: 'three' as 'one' | 'two' | 'three' | 'four',
+    location: '',
+    status: 'normal' as 'normal' | 'warning' | 'danger',
+    controlMeasures: '',
+    lng: 116.4 + (Math.random() - 0.5) * 0.1,
+    lat: 39.915 + (Math.random() - 0.5) * 0.1,
+  });
 
-  const filteredSources = hazardSources.filter((h) => {
+  const filteredSources = state.hazardSources.filter((h) => {
     const matchLevel = levelFilter === 'all' || h.level === levelFilter;
     const matchStatus = statusFilter === 'all' || h.status === statusFilter;
     return matchLevel && matchStatus;
@@ -23,12 +41,99 @@ export default function RiskSource() {
     return { x: Math.max(10, Math.min(90, x)), y: Math.max(10, Math.min(90, y)) };
   };
 
+  const resetForm = () => {
+    setFormData({
+      enterpriseId: '',
+      name: '',
+      type: '',
+      level: 'three',
+      location: '',
+      status: 'normal',
+      controlMeasures: '',
+      lng: 116.4 + (Math.random() - 0.5) * 0.1,
+      lat: 39.915 + (Math.random() - 0.5) * 0.1,
+    });
+  };
+
+  const handleCreate = () => {
+    resetForm();
+    setCreateModalOpen(true);
+  };
+
+  const handleViewDetail = (source: HazardSource) => {
+    setSelectedSource(source);
+    setDetailModalOpen(true);
+  };
+
+  const handleEdit = (source: HazardSource) => {
+    setSelectedSource(source);
+    setFormData({
+      enterpriseId: source.enterpriseId,
+      name: source.name,
+      type: source.type,
+      level: source.level,
+      location: source.location,
+      status: source.status,
+      controlMeasures: source.controlMeasures,
+      lng: source.lng || 116.4 + (Math.random() - 0.5) * 0.1,
+      lat: source.lat || 39.915 + (Math.random() - 0.5) * 0.1,
+    });
+    setEditModalOpen(true);
+  };
+
+  const submitCreate = () => {
+    if (!formData.enterpriseId || !formData.name || !formData.type || !formData.location) return;
+
+    const enterprise = state.enterprises.find((e) => e.id === formData.enterpriseId);
+    const newSource: HazardSource = {
+      id: generateId('hs'),
+      enterpriseId: formData.enterpriseId,
+      enterpriseName: enterprise?.name || '',
+      name: formData.name,
+      type: formData.type,
+      level: formData.level,
+      location: formData.location,
+      status: formData.status,
+      controlMeasures: formData.controlMeasures,
+      lng: formData.lng,
+      lat: formData.lat,
+    };
+
+    dispatch({ type: 'ADD_HAZARD_SOURCE', payload: newSource });
+    setCreateModalOpen(false);
+    resetForm();
+  };
+
+  const submitEdit = () => {
+    if (!selectedSource || !formData.enterpriseId || !formData.name || !formData.type || !formData.location) return;
+
+    const enterprise = state.enterprises.find((e) => e.id === formData.enterpriseId);
+    const updatedSource: HazardSource = {
+      ...selectedSource,
+      enterpriseId: formData.enterpriseId,
+      enterpriseName: enterprise?.name || selectedSource.enterpriseName,
+      name: formData.name,
+      type: formData.type,
+      level: formData.level,
+      location: formData.location,
+      status: formData.status,
+      controlMeasures: formData.controlMeasures,
+      lng: formData.lng,
+      lat: formData.lat,
+    };
+
+    dispatch({ type: 'UPDATE_HAZARD_SOURCE', payload: updatedSource });
+    setEditModalOpen(false);
+    setSelectedSource(null);
+    resetForm();
+  };
+
   return (
     <PageContainer
       title="风险源管理"
       description="管理园区内重大危险源信息"
       actions={
-        <button className="btn btn-primary flex items-center">
+        <button onClick={handleCreate} className="btn btn-primary flex items-center">
           <Plus size={16} className="mr-1" />
           新增危险源
         </button>
@@ -77,13 +182,14 @@ export default function RiskSource() {
                 <rect width="100%" height="100%" fill="url(#grid)" />
               </svg>
             </div>
-            {hazardSources.map((source) => {
+            {state.hazardSources.map((source) => {
               const pos = getMapPosition(source.lng || 116.404, source.lat || 39.915);
               return (
                 <div
                   key={source.id}
                   className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer group"
                   style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+                  onClick={() => handleViewDetail(source)}
                 >
                   <div
                     className={`w-4 h-4 rounded-full ${getHazardLevelColor(source.level)} ${
@@ -175,10 +281,22 @@ export default function RiskSource() {
                       <StatusBadge status={source.status} />
                     </td>
                     <td className="py-3 px-4">
-                      <button className="text-primary-600 hover:text-primary-700 flex items-center text-sm">
-                        <Eye size={14} className="mr-1" />
-                        详情
-                      </button>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => handleViewDetail(source)}
+                          className="text-primary-600 hover:text-primary-700 flex items-center text-sm"
+                        >
+                          <Eye size={14} className="mr-1" />
+                          详情
+                        </button>
+                        <button
+                          onClick={() => handleEdit(source)}
+                          className="text-slate-600 hover:text-slate-700 flex items-center text-sm"
+                        >
+                          <Edit size={14} className="mr-1" />
+                          编辑
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -202,6 +320,247 @@ export default function RiskSource() {
           ))}
         </div>
       </div>
+
+      <Modal
+        open={createModalOpen}
+        onClose={() => {
+          setCreateModalOpen(false);
+          resetForm();
+        }}
+        title="新增危险源"
+        size="lg"
+        footer={
+          <>
+            <button
+              onClick={() => {
+                setCreateModalOpen(false);
+                resetForm();
+              }}
+              className="btn btn-secondary"
+            >
+              取消
+            </button>
+            <button
+              onClick={submitCreate}
+              disabled={!formData.enterpriseId || !formData.name || !formData.type || !formData.location}
+              className="btn btn-primary"
+            >
+              保存
+            </button>
+          </>
+        }
+      >
+        <HazardSourceForm formData={formData} setFormData={setFormData} enterprises={state.enterprises} />
+      </Modal>
+
+      <Modal
+        open={editModalOpen}
+        onClose={() => {
+          setEditModalOpen(false);
+          setSelectedSource(null);
+          resetForm();
+        }}
+        title="编辑危险源"
+        size="lg"
+        footer={
+          <>
+            <button
+              onClick={() => {
+                setEditModalOpen(false);
+                setSelectedSource(null);
+                resetForm();
+              }}
+              className="btn btn-secondary"
+            >
+              取消
+            </button>
+            <button
+              onClick={submitEdit}
+              disabled={!formData.enterpriseId || !formData.name || !formData.type || !formData.location}
+              className="btn btn-primary"
+            >
+              保存
+            </button>
+          </>
+        }
+      >
+        <HazardSourceForm formData={formData} setFormData={setFormData} enterprises={state.enterprises} />
+      </Modal>
+
+      <Modal
+        open={detailModalOpen}
+        onClose={() => {
+          setDetailModalOpen(false);
+          setSelectedSource(null);
+        }}
+        title="危险源详情"
+        size="lg"
+      >
+        {selectedSource && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-slate-500">危险源名称</p>
+                <p className="text-slate-800 font-medium mt-1">{selectedSource.name}</p>
+              </div>
+              <div>
+                <p className="text-sm text-slate-500">所属企业</p>
+                <p className="text-slate-800 font-medium mt-1">{selectedSource.enterpriseName}</p>
+              </div>
+              <div>
+                <p className="text-sm text-slate-500">类型</p>
+                <p className="text-slate-800 font-medium mt-1">{selectedSource.type}</p>
+              </div>
+              <div>
+                <p className="text-sm text-slate-500">等级</p>
+                <span className={`badge text-white ${getHazardLevelColor(selectedSource.level)} mt-1`}>
+                  {getHazardLevelText(selectedSource.level)}
+                </span>
+              </div>
+              <div>
+                <p className="text-sm text-slate-500">位置</p>
+                <p className="text-slate-800 font-medium mt-1">{selectedSource.location}</p>
+              </div>
+              <div>
+                <p className="text-sm text-slate-500">状态</p>
+                <div className="mt-1">
+                  <StatusBadge status={selectedSource.status} />
+                </div>
+              </div>
+              {selectedSource.lng && selectedSource.lat && (
+                <>
+                  <div>
+                    <p className="text-sm text-slate-500">经度</p>
+                    <p className="text-slate-800 font-medium mt-1 font-mono">{selectedSource.lng.toFixed(6)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-slate-500">纬度</p>
+                    <p className="text-slate-800 font-medium mt-1 font-mono">{selectedSource.lat.toFixed(6)}</p>
+                  </div>
+                </>
+              )}
+            </div>
+            <div>
+              <p className="text-sm text-slate-500">管控措施</p>
+              <p className="text-slate-800 mt-1 bg-slate-50 p-3 rounded-lg">{selectedSource.controlMeasures}</p>
+            </div>
+          </div>
+        )}
+      </Modal>
     </PageContainer>
+  );
+}
+
+function HazardSourceForm({ formData, setFormData, enterprises }: any) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="label">所属企业</label>
+        <select
+          className="input"
+          value={formData.enterpriseId}
+          onChange={(e) => setFormData({ ...formData, enterpriseId: e.target.value })}
+        >
+          <option value="">请选择企业</option>
+          {enterprises.map((e: any) => (
+            <option key={e.id} value={e.id}>
+              {e.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="label">危险源名称</label>
+          <input
+            type="text"
+            className="input"
+            placeholder="请输入危险源名称"
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="label">类型</label>
+          <input
+            type="text"
+            className="input"
+            placeholder="请输入类型"
+            value={formData.type}
+            onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="label">等级</label>
+          <select
+            className="input"
+            value={formData.level}
+            onChange={(e) => setFormData({ ...formData, level: e.target.value })}
+          >
+            <option value="one">一级</option>
+            <option value="two">二级</option>
+            <option value="three">三级</option>
+            <option value="four">四级</option>
+          </select>
+        </div>
+        <div>
+          <label className="label">状态</label>
+          <select
+            className="input"
+            value={formData.status}
+            onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+          >
+            <option value="normal">正常</option>
+            <option value="warning">预警</option>
+            <option value="danger">危险</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label className="label">位置</label>
+        <input
+          type="text"
+          className="input"
+          placeholder="请输入位置"
+          value={formData.location}
+          onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+        />
+      </div>
+      <div>
+        <label className="label">管控措施</label>
+        <textarea
+          className="input min-h-24"
+          placeholder="请输入管控措施"
+          value={formData.controlMeasures}
+          onChange={(e) => setFormData({ ...formData, controlMeasures: e.target.value })}
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="label">经度（可选）</label>
+          <input
+            type="number"
+            step="0.000001"
+            className="input"
+            placeholder="经度"
+            value={formData.lng}
+            onChange={(e) => setFormData({ ...formData, lng: parseFloat(e.target.value) || 0 })}
+          />
+        </div>
+        <div>
+          <label className="label">纬度（可选）</label>
+          <input
+            type="number"
+            step="0.000001"
+            className="input"
+            placeholder="纬度"
+            value={formData.lat}
+            onChange={(e) => setFormData({ ...formData, lat: parseFloat(e.target.value) || 0 })}
+          />
+        </div>
+      </div>
+    </div>
   );
 }
