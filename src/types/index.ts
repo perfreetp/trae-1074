@@ -9,6 +9,7 @@ export interface Enterprise {
   riskLevel: 'high' | 'medium' | 'low';
   score: number;
   createdAt: string;
+  scoreHistory?: { beforeScore: number; afterScore: number; changeTime: string; reason?: string }[];
 }
 
 export interface Qualification {
@@ -84,6 +85,7 @@ export interface HazardSource {
   status: 'normal' | 'warning' | 'danger';
   lng?: number;
   lat?: number;
+  statusHistory?: { fromStatus: string; toStatus: string; changeTime: string; reason?: string; requirements?: string }[];
 }
 
 export type WorkTicketType = 'hot' | 'confined';
@@ -182,6 +184,7 @@ export interface Rectification {
   feedbackTime?: string;
   verifier?: string;
   verifyTime?: string;
+  reminderRecords?: { remindeTime: string; remark: string }[];
 }
 
 export interface Incident {

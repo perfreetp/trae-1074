@@ -11,6 +11,8 @@ export default function Reports() {
   const [activeTab, setActiveTab] = useState<TabType>('score');
   const { state } = useStore();
   const { enterprises, workTickets, warnings } = state;
+  const [scoreHistoryOpen, setScoreHistoryOpen] = useState(false);
+  const [selectedScoreEnterprise, setSelectedScoreEnterprise] = useState<any>(null);
 
   const sortedScores = [...enterprises]
     .sort((a, b) => b.score - a.score)
@@ -311,60 +313,77 @@ export default function Reports() {
                         <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">
                           总分
                         </th>
+                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">
+                          操作
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {sortedScores.map((score) => (
-                        <tr
-                          key={score.id}
-                          className="border-t border-slate-100 hover:bg-slate-50"
-                        >
-                          <td className="py-3 px-4">
-                            <span
-                              className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${
-                                score.rank <= 3
-                                  ? 'bg-amber-100 text-amber-800'
-                                  : 'bg-slate-100 text-slate-600'
-                              }`}
-                            >
-                              {score.rank}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-sm text-slate-800 font-medium">
-                            {score.enterpriseName}
-                          </td>
-                          <td className="py-3 px-4 text-sm text-slate-600">
-                            {score.safetyManagement}
-                          </td>
-                          <td className="py-3 px-4 text-sm text-slate-600">
-                            {score.riskControl}
-                          </td>
-                          <td className="py-3 px-4 text-sm text-slate-600">
-                            {score.operationStandard}
-                          </td>
-                          <td className="py-3 px-4 text-sm text-slate-600">
-                            {score.training}
-                          </td>
-                          <td className="py-3 px-4 text-sm text-slate-600">
-                            {score.emergency}
-                          </td>
-                          <td className="py-3 px-4">
-                            <span
-                              className={`text-lg font-bold ${
-                                score.totalScore >= 90
-                                  ? 'text-emerald-600'
-                                  : score.totalScore >= 80
-                                  ? 'text-blue-600'
-                                  : score.totalScore >= 70
-                                  ? 'text-amber-600'
-                                  : 'text-red-600'
-                              }`}
-                            >
-                              {score.totalScore}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                      {sortedScores.map((score) => {
+                        const enterprise = enterprises.find((e) => e.id === score.enterpriseId);
+                        return (
+                          <tr
+                            key={score.id}
+                            className="border-t border-slate-100 hover:bg-slate-50"
+                          >
+                            <td className="py-3 px-4">
+                              <span
+                                className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${
+                                  score.rank <= 3
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-slate-100 text-slate-600'
+                                }`}
+                              >
+                                {score.rank}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-sm text-slate-800 font-medium">
+                              {score.enterpriseName}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-slate-600">
+                              {score.safetyManagement}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-slate-600">
+                              {score.riskControl}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-slate-600">
+                              {score.operationStandard}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-slate-600">
+                              {score.training}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-slate-600">
+                              {score.emergency}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span
+                                className={`text-lg font-bold ${
+                                  score.totalScore >= 90
+                                    ? 'text-emerald-600'
+                                    : score.totalScore >= 80
+                                    ? 'text-blue-600'
+                                    : score.totalScore >= 70
+                                    ? 'text-amber-600'
+                                    : 'text-red-600'
+                                }`}
+                              >
+                                {score.totalScore}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <button
+                                onClick={() => {
+                                  setSelectedScoreEnterprise(enterprise);
+                                  setScoreHistoryOpen(true);
+                                }}
+                                className="text-primary-600 hover:text-primary-700 text-sm"
+                              >
+                                查看历史
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -509,6 +528,53 @@ export default function Reports() {
           )}
         </div>
       </div>
+
+      <Modal
+        open={scoreHistoryOpen}
+        onClose={() => setScoreHistoryOpen(false)}
+        title={`评分历史 - ${selectedScoreEnterprise?.name || ''}`}
+        size="lg"
+        footer={
+          <button onClick={() => setScoreHistoryOpen(false)} className="btn btn-primary">关闭</button>
+        }
+      >
+        {selectedScoreEnterprise && (
+          <div className="space-y-4">
+            <div className="mb-4">
+              <p className="text-sm text-slate-600">
+                当前评分：<span className="text-xl font-bold text-primary-600">{selectedScoreEnterprise.score}</span> 分
+              </p>
+            </div>
+            <div className="space-y-3">
+              {selectedScoreEnterprise.scoreHistory && selectedScoreEnterprise.scoreHistory.length > 0 ? (
+                [...selectedScoreEnterprise.scoreHistory].reverse().map((record: any, idx: number) => (
+                  <div key={idx} className="p-4 border border-slate-200 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center space-x-3">
+                        <span className="text-sm text-slate-500">{record.changeTime}</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-slate-500">{record.beforeScore} 分</span>
+                        <span className="text-slate-400">→</span>
+                        <span className={`font-bold ${record.afterScore > record.beforeScore ? 'text-emerald-600' : record.afterScore < record.beforeScore ? 'text-red-600' : 'text-slate-600'}`}>
+                          {record.afterScore} 分
+                        </span>
+                      </div>
+                    </div>
+                    {record.reason && (
+                      <p className="text-sm text-slate-600 bg-slate-50 p-2 rounded">
+                        {record.reason}
+                      </p>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <p className="text-center text-slate-400 py-8">暂无评分变更记录</p>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
     </PageContainer>
   );
 }

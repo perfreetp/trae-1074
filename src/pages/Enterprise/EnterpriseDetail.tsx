@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Edit, Building, FileCheck, Cylinder, Warehouse as WarehouseIcon, Users, GraduationCap, Package, Plus } from 'lucide-react';
+import { ArrowLeft, Edit, Building, FileCheck, Cylinder, Warehouse as WarehouseIcon, Users, GraduationCap, Package, Plus, TrendingUp } from 'lucide-react';
 import PageContainer from '@/components/ui/PageContainer';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Modal from '@/components/ui/Modal';
@@ -8,7 +8,7 @@ import { useStore } from '@/store';
 import { getRiskLevelColor, getRiskLevelText } from '@/utils';
 import type { Enterprise } from '@/types';
 
-type TabType = 'info' | 'qualification' | 'tank' | 'warehouse' | 'contractor' | 'training' | 'emergency';
+type TabType = 'info' | 'qualification' | 'tank' | 'warehouse' | 'contractor' | 'training' | 'emergency' | 'scoreHistory';
 
 export default function EnterpriseDetail() {
   const { id } = useParams();
@@ -47,6 +47,7 @@ export default function EnterpriseDetail() {
     { key: 'contractor', label: '承包商', icon: Users },
     { key: 'training', label: '培训记录', icon: GraduationCap },
     { key: 'emergency', label: '应急物资', icon: Package },
+    { key: 'scoreHistory', label: '评分历史', icon: TrendingUp },
   ];
 
   const handleOpenEditModal = () => {
@@ -644,6 +645,43 @@ export default function EnterpriseDetail() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'scoreHistory' && (
+            <div>
+              <div className="mb-4">
+                <p className="text-sm text-slate-600">
+                  当前评分：<span className="text-xl font-bold text-primary-600">{enterprise.score}</span> 分
+                </p>
+              </div>
+              <div className="space-y-3">
+                {enterprise.scoreHistory && enterprise.scoreHistory.length > 0 ? (
+                  [...enterprise.scoreHistory].reverse().map((record, idx) => (
+                    <div key={idx} className="p-4 border border-slate-200 rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center space-x-3">
+                          <span className="text-sm text-slate-500">{record.changeTime}</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-slate-500">{record.beforeScore} 分</span>
+                          <span className="text-slate-400">→</span>
+                          <span className={`font-bold ${record.afterScore > record.beforeScore ? 'text-emerald-600' : record.afterScore < record.beforeScore ? 'text-red-600' : 'text-slate-600'}`}>
+                            {record.afterScore} 分
+                          </span>
+                        </div>
+                      </div>
+                      {record.reason && (
+                        <p className="text-sm text-slate-600 bg-slate-50 p-2 rounded">
+                          {record.reason}
+                        </p>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-center text-slate-400 py-8">暂无评分变更记录</p>
+                )}
               </div>
             </div>
           )}

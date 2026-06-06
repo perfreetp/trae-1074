@@ -26,12 +26,22 @@ export default function WorkTicket() {
     safetyMeasures: '',
   });
 
+  const isTicketOverdue = (t: WorkTicket) => {
+    if (t.status === 'completed' || t.status === 'cancelled') return false;
+    const now = new Date();
+    const endTime = new Date(t.planEndTime.replace(/-/g, '/'));
+    return now > endTime;
+  };
+
   const filteredTickets = state.workTickets.filter((t) => {
     const matchSearch =
       t.ticketNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.enterpriseName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.workContent.toLowerCase().includes(searchTerm.toLowerCase());
     const matchType = typeFilter === 'all' || t.type === typeFilter;
+    if (statusFilter === 'overdue') {
+      return matchSearch && matchType && isTicketOverdue(t);
+    }
     const matchStatus = statusFilter === 'all' || t.status === statusFilter;
     return matchSearch && matchType && matchStatus;
   });
@@ -192,6 +202,7 @@ export default function WorkTicket() {
             <option value="rejected">已驳回</option>
             <option value="in_progress">进行中</option>
             <option value="completed">已完成</option>
+            <option value="overdue">已超期</option>
           </select>
         </div>
       </div>
@@ -243,9 +254,16 @@ export default function WorkTicket() {
                     <div className="text-xs text-slate-400">至 {ticket.planEndTime}</div>
                   </td>
                   <td className="py-3 px-4">
-                    <span className={`badge ${getTicketStatusColor(ticket.status)}`}>
-                      {getTicketStatusText(ticket.status)}
-                    </span>
+                    <div className="flex items-center space-x-2">
+                      <span className={`badge ${getTicketStatusColor(ticket.status)}`}>
+                        {getTicketStatusText(ticket.status)}
+                      </span>
+                      {isTicketOverdue(ticket) && (
+                        <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded-full">
+                          已超期
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="py-3 px-4">
                     <button

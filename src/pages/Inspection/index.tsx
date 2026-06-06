@@ -40,6 +40,8 @@ export default function Inspection() {
   const [handleModalOpen, setHandleModalOpen] = useState(false);
   const [handleForm, setHandleForm] = useState({ feedback: '' });
   const [verifyModalOpen, setVerifyModalOpen] = useState(false);
+  const [reminderModalOpen, setReminderModalOpen] = useState(false);
+  const [reminderRemark, setReminderRemark] = useState('');
 
   const enterpriseMap = state.enterprises.reduce((acc, e) => {
     acc[e.id] = e.name;
@@ -49,9 +51,18 @@ export default function Inspection() {
   const filteredTasks = state.inspectionTasks.filter(
     (t) => statusFilter === 'all' || t.status === statusFilter
   );
-  const filteredRectifications = state.rectifications.filter(
-    (r) => statusFilter === 'all' || r.status === statusFilter
-  );
+  const isOverdue = (r: Rectification) => {
+    if (r.status === 'verified') return false;
+    const now = new Date();
+    const deadline = new Date(r.deadline.replace(/-/g, '/'));
+    return now > deadline;
+  };
+
+  const filteredRectifications = state.rectifications.filter((r) => {
+    if (statusFilter === 'all') return true;
+    if (statusFilter === 'overdue') return isOverdue(r);
+    return r.status === statusFilter;
+  });
 
   const openRouteModal = (route?: InspectionRoute) => {
     if (route) {
@@ -185,6 +196,9 @@ export default function Inspection() {
     setTaskModalOpen(false);
   };
 
+  const [taskDetailOpen, setTaskDetailOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<InspectionTask | null>(null);
+
   const startExecute = (task: InspectionTask) => {
     const route = state.inspectionRoutes.find((r) => r.id === task.routeId);
     if (!route || route.points.length === 0) {
@@ -192,9 +206,28 @@ export default function Inspection() {
       return;
     }
 
+    let startIndex = 0;
+    const savedResults: Record<string, { status: 'normal' | 'abnormal'; description: string; photos?: string[] }> = {};
+
+    if (task.records && task.records.length > 0) {
+      task.records.forEach((rec: any) => {
+        savedResults[rec.pointId] = {
+          status: rec.status,
+          description: rec.description || '',
+          photos: rec.photos || [],
+        };
+      });
+      startIndex = task.records.length;
+    }
+
+    if (startIndex >= route.points.length) {
+      alert('该任务已完成所有巡检点');
+      return;
+    }
+
     setExecutingTask({ ...task, status: 'in_progress' });
-    setCurrentPointIndex(0);
-    setCheckResults({});
+    setCurrentPointIndex(startIndex);
+    setCheckResults(savedResults);
     dispatch({ type: 'UPDATE_INSPECTION_TASK', payload: { ...task, status: 'in_progress' } });
     setExecuteModalOpen(true);
   };
@@ -321,6 +354,41 @@ export default function Inspection() {
     setExecutingTask(null);
   };
 
+  const saveProgress = () => {
+    if (!executingTask) return;
+    const route = state.inspectionRoutes.find((r) => r.id === executingTask.routeId);
+    if (!route) return;
+
+    const records = route.points
+      .filter((point) => checkResults[point.id])
+      .map((point) => {
+        const result = checkResults[point.id];
+        return {
+          id: generateId('rec'),
+          taskId: executingTask.id,
+          pointId: point.id,
+          pointName: point.name,
+          checkTime: getCurrentTime(),
+          status: result.status,
+          description: result.description,
+          photos: (result as any).photos || [],
+        };
+      });
+
+    const abnormalCount = records.filter((r) => r.status === 'abnormal').length;
+
+    const updatedTask: InspectionTask = {
+      ...executingTask,
+      status: 'in_progress',
+      records,
+      abnormalCount,
+    };
+
+    dispatch({ type: 'UPDATE_INSPECTION_TASK', payload: updatedTask });
+    setExecuteModalOpen(false);
+    setExecutingTask(null);
+  };
+
   const finishInspection = () => {
     finishInspectionWithResults(checkResults);
   };
@@ -359,6 +427,33 @@ export default function Inspection() {
   const openVerifyModal = (rect: Rectification) => {
     setSelectedRectification(rect);
     setVerifyModalOpen(true);
+  };
+
+  const openReminderModal = (rect: Rectification) => {
+    setSelectedRectification(rect);
+    setReminderRemark('');
+    setReminderModalOpen(true);
+  };
+
+  const submitReminder = () => {
+    if (!selectedRectification) return;
+
+    const existingRecords = (selectedRectification as any).reminderRecords || [];
+    const newRecord = {
+      remindeTime: getCurrentTime(),
+      remark: reminderRemark,
+    };
+
+    dispatch({
+      type: 'UPDATE_RECTIFICATION',
+      payload: {
+        ...selectedRectification,
+        reminderRecords: [...existingRecords, newRecord],
+      } as any,
+    });
+
+    setReminderModalOpen(false);
+    setReminderRemark('');
   };
 
   const handleVerify = (result: 'pass' | 'reject') => {
@@ -584,7 +679,13 @@ export default function Inspection() {
                               执行巡检
                             </button>
                           ) : (
-                            <button className="text-primary-600 hover:text-primary-700 flex items-center text-sm">
+                            <button
+                              onClick={() => {
+                                setSelectedTask(task);
+                                setTaskDetailOpen(true);
+                              }}
+                              className="text-primary-600 hover:text-primary-700 flex items-center text-sm"
+                            >
                               <Eye size={14} className="mr-1" />
                               详情
                             </button>
@@ -611,6 +712,7 @@ export default function Inspection() {
                   <option value="in_progress">处理中</option>
                   <option value="completed">已完成</option>
                   <option value="verified">已验收</option>
+                  <option value="overdue">已逾期</option>
                 </select>
               </div>
               <div className="space-y-4">
@@ -621,6 +723,11 @@ export default function Inspection() {
                         <div className="flex items-center space-x-2">
                           <h4 className="font-medium text-slate-800">{r.title}</h4>
                           <StatusBadge status={r.status} />
+                          {isOverdue(r) && (
+                            <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded-full">
+                              已逾期
+                            </span>
+                          )}
                         </div>
                         <p className="text-sm text-slate-500 mt-1">{r.description}</p>
                         <div className="flex items-center space-x-4 mt-2 text-sm text-slate-500">
@@ -628,7 +735,7 @@ export default function Inspection() {
                             <MapPin size={14} className="mr-1" />
                             {r.enterpriseName}
                           </span>
-                          <span className="flex items-center">
+                          <span className={`flex items-center ${isOverdue(r) ? 'text-red-600 font-medium' : ''}`}>
                             <Calendar size={14} className="mr-1" />
                             截止：{r.deadline}
                           </span>
@@ -654,12 +761,20 @@ export default function Inspection() {
                           查看
                         </button>
                         {(r.status === 'pending' || r.status === 'in_progress') && (
-                          <button
-                            onClick={() => openHandleModal(r)}
-                            className="text-emerald-600 hover:text-emerald-700 text-sm"
-                          >
-                            处理
-                          </button>
+                          <>
+                            <button
+                              onClick={() => openHandleModal(r)}
+                              className="text-emerald-600 hover:text-emerald-700 text-sm"
+                            >
+                              处理
+                            </button>
+                            <button
+                              onClick={() => openReminderModal(r)}
+                              className="text-amber-600 hover:text-amber-700 text-sm"
+                            >
+                              催办
+                            </button>
+                          </>
                         )}
                         {r.status === 'completed' && (
                           <button
@@ -900,6 +1015,35 @@ export default function Inspection() {
               </div>
             </div>
 
+            {currentPointIndex > 0 && (
+              <div className="mb-6 max-h-40 overflow-y-auto space-y-2">
+                <p className="text-sm font-medium text-slate-600 mb-2">已完成检查点：</p>
+                {currentRoute?.points.slice(0, currentPointIndex).map((point, idx) => {
+                  const result = checkResults[point.id];
+                  return (
+                    <div key={point.id} className="flex items-center p-2 bg-slate-50 rounded-lg">
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center mr-3 text-sm font-bold ${
+                        result?.status === 'normal' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                      }`}>
+                        {idx + 1}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-slate-700">{point.name}</p>
+                        {result?.photos && result.photos.length > 0 && (
+                          <p className="text-xs text-slate-500">照片：{result.photos.length} 张</p>
+                        )}
+                      </div>
+                      <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                        result?.status === 'normal' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+                      }`}>
+                        {result?.status === 'normal' ? '正常' : '异常'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             <div className="bg-slate-50 rounded-xl p-6 mb-6">
               <div className="flex items-center mb-4">
                 <div className="w-12 h-12 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center font-bold text-lg mr-4">
@@ -946,11 +1090,10 @@ export default function Inspection() {
                 上一点
               </button>
               <button
-                onClick={finishInspection}
-                className="btn btn-primary flex items-center"
+                onClick={saveProgress}
+                className="btn btn-secondary flex items-center"
               >
-                提前完成
-                <Check size={16} className="ml-1" />
+                保存进度
               </button>
             </div>
           </div>
@@ -1100,8 +1243,49 @@ export default function Inspection() {
                 )}
               </div>
             )}
+            {(selectedRectification as any).reminderRecords && (selectedRectification as any).reminderRecords.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-slate-700 mb-2">催办记录</p>
+                <div className="space-y-2">
+                  {(selectedRectification as any).reminderRecords.map((rec: any, idx: number) => (
+                    <div key={idx} className="bg-amber-50 rounded-lg p-3 border-l-4 border-amber-400">
+                      <p className="text-xs text-slate-500">{rec.remindeTime}</p>
+                      <p className="text-sm text-slate-700 mt-1">{rec.remark || '（无备注）'}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
+      </Modal>
+
+      <Modal
+        open={reminderModalOpen}
+        onClose={() => setReminderModalOpen(false)}
+        title="发送催办"
+        footer={
+          <div className="flex space-x-3">
+            <button onClick={() => setReminderModalOpen(false)} className="btn btn-secondary">取消</button>
+            <button onClick={submitReminder} className="btn btn-primary">发送</button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="label">催办备注</label>
+            <textarea
+              className="input"
+              rows={3}
+              value={reminderRemark}
+              onChange={(e) => setReminderRemark(e.target.value)}
+              placeholder="请输入催办备注（可选）"
+            />
+          </div>
+          <p className="text-sm text-slate-500">
+            发送催办后，将在整改详情中留下催办记录。
+          </p>
+        </div>
       </Modal>
 
       <Modal
@@ -1190,6 +1374,112 @@ export default function Inspection() {
               <p className="text-slate-700">{selectedRectification.feedback || '暂无反馈'}</p>
             </div>
             <p className="text-center text-slate-600">请确认整改是否符合要求？</p>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={taskDetailOpen}
+        onClose={() => setTaskDetailOpen(false)}
+        title={`巡检任务详情 - ${selectedTask?.routeName}`}
+        size="lg"
+        footer={
+          <button onClick={() => setTaskDetailOpen(false)} className="btn btn-primary">关闭</button>
+        }
+      >
+        {selectedTask && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-slate-500">所属企业</p>
+                <p className="text-slate-700 font-medium">{selectedTask.enterpriseName}</p>
+              </div>
+              <div>
+                <p className="text-sm text-slate-500">巡检人</p>
+                <p className="text-slate-700 font-medium">{selectedTask.inspector}</p>
+              </div>
+              <div>
+                <p className="text-sm text-slate-500">开始时间</p>
+                <p className="text-slate-700">{selectedTask.startTime}</p>
+              </div>
+              <div>
+                <p className="text-sm text-slate-500">状态</p>
+                <StatusBadge status={selectedTask.status} />
+              </div>
+              {selectedTask.endTime && (
+                <div>
+                  <p className="text-sm text-slate-500">完成时间</p>
+                  <p className="text-slate-700">{selectedTask.endTime}</p>
+                </div>
+              )}
+              <div>
+                <p className="text-sm text-slate-500">异常数量</p>
+                <p className="text-slate-700 font-medium text-red-600">{selectedTask.abnormalCount}</p>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="font-medium text-slate-800 mb-3">巡检记录</h4>
+              <div className="space-y-3">
+                {selectedTask.records && selectedTask.records.length > 0 ? (
+                  (selectedTask.records as any[]).map((rec: any, idx: number) => {
+                    const relatedRect = state.rectifications.find(
+                      (r) => (r as any).sourceId === rec.id
+                    );
+                    return (
+                      <div key={rec.id} className="border border-slate-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center">
+                            <span className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold ${
+                              rec.status === 'normal' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                            }`}>
+                              {idx + 1}
+                            </span>
+                            <div>
+                              <p className="font-medium text-slate-800">{rec.pointName}</p>
+                              <p className="text-xs text-slate-500">{rec.checkTime}</p>
+                            </div>
+                          </div>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            rec.status === 'normal' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+                          }`}>
+                            {rec.status === 'normal' ? '正常' : '异常'}
+                          </span>
+                        </div>
+                        {rec.description && (
+                          <div className="bg-slate-50 rounded p-3 mb-2">
+                            <p className="text-sm text-slate-500 mb-1">异常说明：</p>
+                            <p className="text-sm text-slate-700">{rec.description}</p>
+                          </div>
+                        )}
+                        {rec.photos && rec.photos.length > 0 && (
+                          <div className="mb-2">
+                            <p className="text-sm text-slate-500 mb-1">现场照片：</p>
+                            <div className="flex flex-wrap gap-2">
+                              {rec.photos.map((name: string, i: number) => (
+                                <span key={i} className="bg-slate-100 px-2 py-1 rounded text-xs text-slate-600">
+                                  {name}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {relatedRect && (
+                          <div className="bg-amber-50 rounded p-3">
+                            <p className="text-sm text-amber-700 font-medium">关联整改项：{relatedRect.title}</p>
+                            <p className="text-xs text-amber-600 mt-1">
+                              状态：{relatedRect.status === 'pending' ? '待处理' : relatedRect.status === 'in_progress' ? '处理中' : relatedRect.status === 'completed' ? '待验收' : '已完成'}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-center text-slate-400 py-8">暂无巡检记录</p>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </Modal>

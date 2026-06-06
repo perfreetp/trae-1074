@@ -119,7 +119,7 @@ export default function Dashboard() {
           value={hazardSources.length}
           icon={<AlertTriangle size={24} />}
           color="red"
-          trend="2个预警中"
+          trend={`${hazardSources.filter(s => s.status !== 'normal').length} 个预警中`}
           trendUp={false}
         />
         <StatCard
@@ -127,7 +127,7 @@ export default function Dashboard() {
           value={workTickets.filter((t) => t.status !== 'draft').length}
           icon={<FileText size={24} />}
           color="amber"
-          trend={`${pendingTickets} 张待审批`}
+          trend={`${pendingTickets} 张待审批，${workTickets.filter(t => t.status !== 'completed' && t.status !== 'cancelled' && new Date() > new Date(t.planEndTime.replace(/-/g, '/'))).length} 张超期`}
           trendUp={false}
         />
         <StatCard

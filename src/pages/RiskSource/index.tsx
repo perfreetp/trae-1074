@@ -8,7 +8,7 @@ import { getHazardLevelColor, getHazardLevelText } from '@/utils';
 import type { HazardSource } from '@/types';
 
 export default function RiskSource() {
-  const { state, dispatch, generateId } = useStore();
+  const { state, dispatch, generateId, getCurrentTime } = useStore();
   const [levelFilter, setLevelFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -16,6 +16,10 @@ export default function RiskSource() {
   const [detailEditMode, setDetailEditMode] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedSource, setSelectedSource] = useState<HazardSource | null>(null);
+  const [pendingStatusChange, setPendingStatusChange] = useState<{ source: HazardSource; newStatus: string } | null>(null);
+  const [statusChangeReason, setStatusChangeReason] = useState('');
+  const [statusChangeRequirements, setStatusChangeRequirements] = useState('');
+  const [statusChangeFromDetail, setStatusChangeFromDetail] = useState(false);
   const [formData, setFormData] = useState({
     enterpriseId: '',
     name: '',
@@ -120,8 +124,16 @@ export default function RiskSource() {
   const submitEdit = () => {
     if (!selectedSource || !formData.enterpriseId || !formData.name || !formData.type || !formData.location) return;
 
+    if (formData.status !== selectedSource.status && (formData.status === 'warning' || formData.status === 'danger')) {
+      setPendingStatusChange({ source: selectedSource, newStatus: formData.status });
+      setStatusChangeReason('');
+      setStatusChangeRequirements('');
+      setStatusChangeFromDetail(false);
+      return;
+    }
+
     const enterprise = state.enterprises.find((e) => e.id === formData.enterpriseId);
-    const updatedSource: HazardSource = {
+    const updatedSource: any = {
       ...selectedSource,
       enterpriseId: formData.enterpriseId,
       enterpriseName: enterprise?.name || selectedSource.enterpriseName,
@@ -134,6 +146,14 @@ export default function RiskSource() {
       lng: formData.lng,
       lat: formData.lat,
     };
+
+    if (formData.status !== selectedSource.status) {
+      updatedSource.statusHistory = [...(selectedSource.statusHistory || []), {
+        fromStatus: selectedSource.status,
+        toStatus: formData.status,
+        changeTime: getCurrentTime(),
+      }];
+    }
 
     dispatch({ type: 'UPDATE_HAZARD_SOURCE', payload: updatedSource });
     setEditModalOpen(false);
@@ -141,11 +161,63 @@ export default function RiskSource() {
     resetForm();
   };
 
+  const confirmStatusChange = () => {
+    if (!pendingStatusChange) return;
+    const { source, newStatus } = pendingStatusChange;
+    const enterprise = state.enterprises.find((e) => e.id === formData.enterpriseId);
+
+    const historyRecord = {
+      fromStatus: source.status,
+      toStatus: newStatus,
+      changeTime: getCurrentTime(),
+      reason: statusChangeReason,
+      requirements: statusChangeRequirements,
+    };
+
+    const updatedSource: any = {
+      ...source,
+      enterpriseId: formData.enterpriseId,
+      enterpriseName: enterprise?.name || source.enterpriseName,
+      name: formData.name,
+      type: formData.type,
+      level: formData.level,
+      location: formData.location,
+      status: newStatus,
+      controlMeasures: formData.controlMeasures,
+      lng: formData.lng,
+      lat: formData.lat,
+      statusHistory: [...(source.statusHistory || []), historyRecord],
+    };
+
+    dispatch({ type: 'UPDATE_HAZARD_SOURCE', payload: updatedSource });
+
+    if (statusChangeFromDetail) {
+      setSelectedSource(updatedSource);
+      setDetailEditMode(false);
+    } else {
+      setEditModalOpen(false);
+      setSelectedSource(null);
+      resetForm();
+    }
+
+    setPendingStatusChange(null);
+    setStatusChangeReason('');
+    setStatusChangeRequirements('');
+  };
+
   const submitDetailEdit = () => {
     if (!selectedSource || !formData.enterpriseId || !formData.name || !formData.type || !formData.location) return;
 
+    if (formData.status !== selectedSource.status && (formData.status === 'warning' || formData.status === 'danger')) {
+      setPendingStatusChange({ source: selectedSource, newStatus: formData.status });
+      setStatusChangeReason('');
+      setStatusChangeRequirements('');
+      setStatusChangeFromDetail(true);
+      return;
+    }
+
     const enterprise = state.enterprises.find((e) => e.id === formData.enterpriseId);
-    const updatedSource: HazardSource = {
+    const updatedSource: any = {
       ...selectedSource,
       enterpriseId: formData.enterpriseId,
       enterpriseName: enterprise?.name || selectedSource.enterpriseName,
@@ -158,6 +230,14 @@ export default function RiskSource() {
       lng: formData.lng,
       lat: formData.lat,
     };
+
+    if (formData.status !== selectedSource.status) {
+      updatedSource.statusHistory = [...(selectedSource.statusHistory || []), {
+        fromStatus: selectedSource.status,
+        toStatus: formData.status,
+        changeTime: getCurrentTime(),
+      }];
+    }
 
     dispatch({ type: 'UPDATE_HAZARD_SOURCE', payload: updatedSource });
     setSelectedSource(updatedSource);
@@ -513,9 +593,87 @@ export default function RiskSource() {
                 <p className="text-sm text-slate-500">管控措施</p>
                 <p className="text-slate-800 mt-1 bg-slate-50 p-3 rounded-lg">{selectedSource.controlMeasures}</p>
               </div>
+              {selectedSource.statusHistory && selectedSource.statusHistory.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-slate-700 mb-3">状态变更记录</p>
+                  <div className="space-y-3">
+                    {[...selectedSource.statusHistory].reverse().map((record: any, idx: number) => (
+                      <div key={idx} className="flex items-start">
+                        <div className="flex flex-col items-center mr-3">
+                          <div className={`w-3 h-3 rounded-full ${
+                            record.toStatus === 'danger' ? 'bg-red-500' :
+                            record.toStatus === 'warning' ? 'bg-amber-500' : 'bg-emerald-500'
+                          }`} />
+                          {idx < (selectedSource.statusHistory?.length || 0) - 1 && (
+                            <div className="w-0.5 h-full bg-slate-200 mt-1" />
+                          )}
+                        </div>
+                        <div className="flex-1 pb-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-slate-700">
+                              {record.fromStatus === 'normal' ? '正常' : record.fromStatus === 'warning' ? '预警' : '危险'}
+                              <span className="mx-2 text-slate-400">→</span>
+                              {record.toStatus === 'normal' ? '正常' : record.toStatus === 'warning' ? '预警' : '危险'}
+                            </span>
+                            <span className="text-xs text-slate-500">{record.changeTime}</span>
+                          </div>
+                          {record.reason && (
+                            <p className="text-sm text-slate-600 mt-1">原因：{record.reason}</p>
+                          )}
+                          {record.requirements && (
+                            <p className="text-sm text-slate-600 mt-1">处置要求：{record.requirements}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )
         )}
+      </Modal>
+
+      <Modal
+        open={!!pendingStatusChange}
+        onClose={() => setPendingStatusChange(null)}
+        title="状态变更确认"
+        footer={
+          <div className="flex space-x-3">
+            <button onClick={() => setPendingStatusChange(null)} className="btn btn-secondary">取消</button>
+            <button onClick={confirmStatusChange} className="btn btn-primary">确认变更</button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <p className="text-amber-800 font-medium">
+              即将将风险源「{pendingStatusChange?.source.name}」状态从「
+              {pendingStatusChange?.source.status === 'normal' ? '正常' : pendingStatusChange?.source.status === 'warning' ? '预警' : '危险'}
+              」变更为「
+              {pendingStatusChange?.newStatus === 'warning' ? '预警' : '危险'}
+              」
+            </p>
+          </div>
+          <div>
+            <label className="label">变更原因</label>
+            <textarea
+              className="input min-h-[80px]"
+              value={statusChangeReason}
+              onChange={(e) => setStatusChangeReason(e.target.value)}
+              placeholder="请填写状态变更原因"
+            />
+          </div>
+          <div>
+            <label className="label">处置要求</label>
+            <textarea
+              className="input min-h-[80px]"
+              value={statusChangeRequirements}
+              onChange={(e) => setStatusChangeRequirements(e.target.value)}
+              placeholder="请填写处置要求"
+            />
+          </div>
+        </div>
       </Modal>
     </PageContainer>
   );

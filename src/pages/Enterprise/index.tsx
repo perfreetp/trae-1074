@@ -14,6 +14,7 @@ export default function Enterprise() {
   const [riskFilter, setRiskFilter] = useState('all');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingEnterprise, setEditingEnterprise] = useState<Enterprise | null>(null);
+  const [scoreChangeReason, setScoreChangeReason] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     code: '',
@@ -46,6 +47,7 @@ export default function Enterprise() {
         riskLevel: enterprise.riskLevel,
         score: enterprise.score,
       });
+      setScoreChangeReason('');
     } else {
       setEditingEnterprise(null);
       setFormData({
@@ -58,6 +60,7 @@ export default function Enterprise() {
         riskLevel: 'medium',
         score: 80,
       });
+      setScoreChangeReason('');
     }
     setModalOpen(true);
   };
@@ -66,19 +69,41 @@ export default function Enterprise() {
     if (!formData.name || !formData.code) return;
 
     if (editingEnterprise) {
+      let updatedEnterprise: any = { ...editingEnterprise, ...formData };
+
+      if (formData.score !== editingEnterprise.score) {
+        const historyRecord = {
+          beforeScore: editingEnterprise.score,
+          afterScore: formData.score,
+          changeTime: getCurrentTime(),
+          reason: scoreChangeReason,
+        };
+        const existingHistory = editingEnterprise.scoreHistory || [];
+        updatedEnterprise.scoreHistory = [...existingHistory, historyRecord];
+      }
+
       dispatch({
         type: 'UPDATE_ENTERPRISE',
-        payload: { ...editingEnterprise, ...formData },
+        payload: updatedEnterprise,
       });
     } else {
       const newEnterprise: Enterprise = {
         id: generateId('e'),
         ...formData,
         createdAt: getCurrentTime().split(' ')[0],
+        scoreHistory: [
+          {
+            beforeScore: 0,
+            afterScore: formData.score,
+            changeTime: getCurrentTime(),
+            reason: '企业创建',
+          },
+        ],
       };
       dispatch({ type: 'ADD_ENTERPRISE', payload: newEnterprise });
     }
     setModalOpen(false);
+    setScoreChangeReason('');
   };
 
   return (
@@ -307,6 +332,17 @@ export default function Enterprise() {
               onChange={(e) => setFormData({ ...formData, score: Number(e.target.value) })}
             />
           </div>
+          {editingEnterprise && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">评分变更原因</label>
+              <textarea
+                className="input min-h-[80px]"
+                value={scoreChangeReason}
+                onChange={(e) => setScoreChangeReason(e.target.value)}
+                placeholder="请输入评分变更原因（可选）"
+              />
+            </div>
+          )}
         </div>
       </Modal>
     </PageContainer>
